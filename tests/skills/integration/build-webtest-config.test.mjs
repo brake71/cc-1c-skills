@@ -95,32 +95,13 @@ export const steps = [
     validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'Documents/ПриходнаяНакладная' },
   },
 
-  // Регистр накопления ОстаткиТоваров
-  {
-    name: 'meta-compile: Регистр накопления ОстаткиТоваров',
-    script: 'meta-compile/scripts/meta-compile',
-    input: {
-      type: 'AccumulationRegister', name: 'ОстаткиТоваров',
-      registerType: 'Balance',
-      dimensions: [
-        { name: 'Номенклатура', type: 'String', length: 150 },
-      ],
-      resources: [
-        { name: 'Количество', type: 'Number', length: 15, precision: 3 },
-        { name: 'Сумма', type: 'Number', length: 15, precision: 2 },
-      ],
-    },
-    args: { '-JsonPath': '{inputFile}', '-OutputDir': '{workDir}' },
-    validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'AccumulationRegisters/ОстаткиТоваров' },
-  },
-
-  // Регистр сведений КурсыВалют
+  // Регистр сведений КурсыВалют (Independent — без регистратора)
   {
     name: 'meta-compile: Регистр сведений КурсыВалют',
     script: 'meta-compile/scripts/meta-compile',
     input: {
       type: 'InformationRegister', name: 'КурсыВалют',
-      writeMode: 'RecorderSubordinate',
+      writeMode: 'Independent',
       dimensions: [
         { name: 'Валюта', type: 'String', length: 10 },
       ],
@@ -267,11 +248,12 @@ export const steps = [
       dataSets: [{
         name: 'НаборДанных',
         type: 'Query',
-        query: 'SELECT Номенклатура, Количество, Сумма FROM AccumulationRegister.ОстаткиТоваров',
+        query: 'SELECT Номенклатура, Количество, Цена, Сумма FROM Document.ПриходнаяНакладная.Товары',
       }],
       fields: [
         { name: 'Номенклатура', title: 'Номенклатура' },
         { name: 'Количество', title: 'Количество' },
+        { name: 'Цена', title: 'Цена' },
         { name: 'Сумма', title: 'Сумма' },
       ],
     },
@@ -287,11 +269,10 @@ export const steps = [
       name: 'Склад',
       synonym: 'Склад',
       content: [
-        'Catalogs.Контрагенты',
-        'Catalogs.Номенклатура',
-        'Documents.ПриходнаяНакладная',
-        'AccumulationRegisters.ОстаткиТоваров',
-        'Reports.ОстаткиТоваров',
+        'Catalog.Контрагенты',
+        'Catalog.Номенклатура',
+        'Document.ПриходнаяНакладная',
+        'Report.ОстаткиТоваров',
       ],
     },
     args: { '-DefinitionFile': '{inputFile}', '-OutputDir': '{workDir}' },
@@ -304,8 +285,8 @@ export const steps = [
       name: 'Администрирование',
       synonym: 'Администрирование',
       content: [
-        'InformationRegisters.КурсыВалют',
-        'Constants.ОсновнаяВалюта',
+        'InformationRegister.КурсыВалют',
+        'Constant.ОсновнаяВалюта',
       ],
     },
     args: { '-DefinitionFile': '{inputFile}', '-OutputDir': '{workDir}' },
@@ -322,7 +303,6 @@ export const steps = [
         'Catalog.Контрагенты: Read View Add Update Delete',
         'Catalog.Номенклатура: Read View Add Update Delete',
         'Document.ПриходнаяНакладная: Read View Add Update Delete Posting UnPosting',
-        'AccumulationRegister.ОстаткиТоваров: Read',
         'InformationRegister.КурсыВалют: Read View Add Update Delete',
         'Report.ОстаткиТоваров: Use View',
       ],
@@ -340,7 +320,6 @@ export const steps = [
       { operation: 'add-childObject', value: 'Catalog.Номенклатура' },
       { operation: 'add-childObject', value: 'Enum.ВидыНоменклатуры' },
       { operation: 'add-childObject', value: 'Document.ПриходнаяНакладная' },
-      { operation: 'add-childObject', value: 'AccumulationRegister.ОстаткиТоваров' },
       { operation: 'add-childObject', value: 'InformationRegister.КурсыВалют' },
       { operation: 'add-childObject', value: 'Constant.ОсновнаяВалюта' },
       { operation: 'add-childObject', value: 'CommonModule.ОбщиеФункции' },
