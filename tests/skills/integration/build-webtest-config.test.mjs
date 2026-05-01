@@ -153,6 +153,29 @@ export const steps = [
     args: { '-JsonPath': '{inputFile}', '-OutputDir': '{workDir}' },
     validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'CommonModules/ОбщиеФункции' },
   },
+  {
+    name: 'writeFile: ОбщиеФункции Module.bsl',
+    writeFile: 'CommonModules/ОбщиеФункции/Ext/Module.bsl',
+    content: `Процедура ПоказатьСообщение() Экспорт
+\tСообщить("Тестовое сообщение");
+КонецПроцедуры
+
+Процедура ВызватьТестовоеИсключение() Экспорт
+\tВызватьИсключение "Тестовое исключение";
+КонецПроцедуры
+`,
+  },
+
+  // Обработка ТестовыеОшибки — для тестов errors balloon/messages/modal (10-validation)
+  {
+    name: 'meta-compile: Обработка ТестовыеОшибки',
+    script: 'meta-compile/scripts/meta-compile',
+    input: {
+      type: 'DataProcessor', name: 'ТестовыеОшибки',
+    },
+    args: { '-JsonPath': '{inputFile}', '-OutputDir': '{workDir}' },
+    validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'DataProcessors/ТестовыеОшибки' },
+  },
 
   // Отчёт ОстаткиТоваров
   {
@@ -348,6 +371,57 @@ export const steps = [
     validate: { script: 'form-validate/scripts/form-validate', flag: '-FormPath', path: 'Documents/ПриходнаяНакладная/Forms/ФормаСписка/Ext/Form.xml' },
   },
 
+  // Форма обработки ТестовыеОшибки — кнопки вызова процедур ОбщиеФункции
+  {
+    name: 'form-add: Форма обработки ТестовыеОшибки',
+    script: 'form-add/scripts/form-add',
+    args: { '-ObjectPath': '{workDir}/DataProcessors/ТестовыеОшибки.xml', '-FormName': 'ФормаОбработки' },
+  },
+  {
+    name: 'form-compile: Форма обработки ТестовыеОшибки',
+    script: 'form-compile/scripts/form-compile',
+    input: {
+      title: 'Тестовые ошибки',
+      attributes: [
+        { name: 'Объект', type: 'DataProcessorObject.ТестовыеОшибки', main: true },
+      ],
+      elements: [
+        { button: 'ПоказатьСообщение', command: 'ПоказатьСообщение', title: 'Показать сообщение' },
+        { button: 'ВызватьИсключение', command: 'ВызватьИсключениеКоманда', title: 'Вызвать исключение' },
+      ],
+      commands: [
+        { name: 'ПоказатьСообщение', action: 'ПоказатьСообщение' },
+        { name: 'ВызватьИсключениеКоманда', action: 'ВызватьИсключениеКоманда' },
+      ],
+    },
+    args: { '-JsonPath': '{inputFile}', '-OutputPath': '{workDir}/DataProcessors/ТестовыеОшибки/Forms/ФормаОбработки/Ext/Form.xml' },
+    validate: { script: 'form-validate/scripts/form-validate', flag: '-FormPath', path: 'DataProcessors/ТестовыеОшибки/Forms/ФормаОбработки/Ext/Form.xml' },
+  },
+  {
+    name: 'writeFile: ТестовыеОшибки form Module.bsl',
+    writeFile: 'DataProcessors/ТестовыеОшибки/Forms/ФормаОбработки/Ext/Form/Module.bsl',
+    content: `&НаКлиенте
+Процедура ПоказатьСообщение(Команда)
+\tПоказатьСообщениеНаСервере();
+КонецПроцедуры
+
+&НаСервере
+Процедура ПоказатьСообщениеНаСервере()
+\tОбщиеФункции.ПоказатьСообщение();
+КонецПроцедуры
+
+&НаКлиенте
+Процедура ВызватьИсключениеКоманда(Команда)
+\tВызватьИсключениеНаСервере();
+КонецПроцедуры
+
+&НаСервере
+Процедура ВызватьИсключениеНаСервере()
+\tОбщиеФункции.ВызватьТестовоеИсключение();
+КонецПроцедуры
+`,
+  },
+
   // ── 4. DCS for report ──
   {
     name: 'skd-compile: Схема отчёта ОстаткиТоваров',
@@ -397,6 +471,7 @@ export const steps = [
       content: [
         'InformationRegister.КурсыВалют',
         'Constant.ОсновнаяВалюта',
+        'DataProcessor.ТестовыеОшибки',
       ],
     },
     args: { '-DefinitionFile': '{inputFile}', '-OutputDir': '{workDir}' },
@@ -434,6 +509,7 @@ export const steps = [
       { operation: 'add-childObject', value: 'InformationRegister.КурсыВалют' },
       { operation: 'add-childObject', value: 'Constant.ОсновнаяВалюта' },
       { operation: 'add-childObject', value: 'CommonModule.ОбщиеФункции' },
+      { operation: 'add-childObject', value: 'DataProcessor.ТестовыеОшибки' },
       { operation: 'add-childObject', value: 'Report.ОстаткиТоваров' },
       { operation: 'add-childObject', value: 'Subsystem.Склад' },
       { operation: 'add-childObject', value: 'Subsystem.Администрирование' },

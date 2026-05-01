@@ -929,6 +929,22 @@ async function runIntegrationTest(test, opts) {
       const step = test.steps[i];
       const stepT0 = performance.now();
 
+      // writeFile step: записать содержимое (обычно .bsl модуля) в workDir
+      if (step.writeFile) {
+        try {
+          const target = replacePlaceholders(step.writeFile);
+          const abs = target.includes(':') || target.startsWith('/') ? target : join(workDir, target);
+          mkdirSync(dirname(abs), { recursive: true });
+          writeFileSync(abs, step.content ?? '', 'utf8');
+          const stepElapsed = ((performance.now() - stepT0) / 1000).toFixed(1);
+          stepResults.push({ name: step.name, passed: true, elapsed: `${stepElapsed}s` });
+        } catch (e) {
+          stepResults.push({ name: step.name, passed: false, error: `writeFile failed: ${e.message}` });
+          break;
+        }
+        continue;
+      }
+
       // Write input if provided
       let inputFile = null;
       if (step.input) {
