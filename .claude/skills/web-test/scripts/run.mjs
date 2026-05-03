@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// web-test run v1.5 — CLI runner for 1C web client automation
+// web-test run v1.6 — CLI runner for 1C web client automation
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * CLI runner for 1C web client automation.
@@ -21,6 +21,7 @@ import * as browser from './browser.mjs';
 import { readFileSync, writeFileSync, unlinkSync, existsSync, readdirSync, mkdirSync } from 'fs';
 import { resolve, dirname, basename, relative } from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SESSION_FILE = resolve(__dirname, '..', '.browser-session.json');
@@ -384,6 +385,12 @@ async function cmdTest(rawArgs) {
   if (!['on-failure', 'every-step', 'off'].includes(opts.screenshot)) {
     die(`Invalid --screenshot=${opts.screenshot} (expected on-failure|every-step|off)`);
   }
+  if (!['json', 'allure', 'junit'].includes(opts.format)) {
+    die(`Invalid --format=${opts.format} (expected json|allure|junit)`);
+  }
+  if (opts.format === 'junit' && !opts.report) {
+    die('--format=junit requires --report=path.xml');
+  }
   // Resolve report directory: --report-dir, else dirname(--report), else testDir
   const reportDir = opts.reportDir
     ? resolve(opts.reportDir)
@@ -528,7 +535,7 @@ async function cmdTest(rawArgs) {
           await resetState(ctx);
 
           const dur = elapsed(t0);
-          testResult = { name: t.name, file: t.file, tags: t.tags, status: 'passed', duration: dur, attempts: attempt, steps, output: output.join('\n'), error: null, screenshot: null };
+          testResult = { name: t.name, file: t.file, tags: t.tags, status: 'passed', duration: dur, attempts: attempt, start: t0, stop: Date.now(), steps, output: output.join('\n'), error: null, screenshot: null };
           lastError = null;
           break;
 
@@ -552,7 +559,7 @@ async function cmdTest(rawArgs) {
 
           lastError = { message: e.message, step: e.onecError?.step, screenshot: shotFile };
           const dur = elapsed(t0);
-          testResult = { name: t.name, file: t.file, tags: t.tags, status: 'failed', duration: dur, attempts: attempt, steps, output: output.join('\n'), error: lastError, screenshot: shotFile };
+          testResult = { name: t.name, file: t.file, tags: t.tags, status: 'failed', duration: dur, attempts: attempt, start: t0, stop: Date.now(), steps, output: output.join('\n'), error: lastError, screenshot: shotFile };
         }
       }
 
@@ -599,11 +606,92 @@ async function cmdTest(rawArgs) {
   };
   out(report);
 
-  if (opts.report) {
+  if (opts.format === 'allure') {
+    writeAllure(results, reportDir);
+  } else if (opts.format === 'junit') {
+    writeFileSync(resolve(opts.report), buildJUnit(report, testDir));
+  } else if (opts.report) {
     writeFileSync(resolve(opts.report), JSON.stringify(report, null, 2));
   }
 
   if (failCount > 0) process.exit(1);
+}
+
+function writeAllure(results, reportDir) {
+  for (const tr of results) {
+    if (tr.status === 'skipped') continue; // Allure ignores skipped without start/stop
+    const uuid = randomUUID();
+    const out = {
+      uuid,
+      name: tr.name,
+      fullName: tr.file,
+      status: tr.status,
+      stage: 'finished',
+      start: tr.start,
+      stop: tr.stop,
+      labels: (tr.tags || []).map(t => ({ name: 'tag', value: t })),
+      steps: (tr.steps || []).map(allureStep),
+      attachments: tr.screenshot ? [{
+        name: 'Screenshot on failure',
+        source: basename(tr.screenshot),
+        type: 'image/png',
+      }] : [],
+    };
+    if (tr.status === 'failed' && tr.error) {
+      out.statusDetails = { message: tr.error.message || '', trace: tr.output || '' };
+    }
+    writeFileSync(resolve(reportDir, `${uuid}-result.json`), JSON.stringify(out, null, 2));
+  }
+}
+
+function allureStep(s) {
+  const out = {
+    name: s.name,
+    status: s.status,
+    stage: 'finished',
+    start: s.start,
+    stop: s.stop,
+    steps: (s.steps || []).map(allureStep),
+  };
+  if (s.screenshot) {
+    out.attachments = [{ name: 'Screenshot', source: basename(s.screenshot), type: 'image/png' }];
+  }
+  if (s.status === 'failed' && s.error) {
+    out.statusDetails = { message: s.error, trace: s.error };
+  }
+  return out;
+}
+
+function xmlEscape(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function buildJUnit(report, testDir) {
+  const { summary, duration, tests } = report;
+  const suiteName = relative(process.cwd(), testDir).replace(/\\/g, '/') || '.';
+  const lines = ['<?xml version="1.0" encoding="UTF-8"?>'];
+  lines.push(`<testsuites name="web-test" tests="${summary.total}" failures="${summary.failed}" skipped="${summary.skipped}" time="${duration.toFixed(3)}">`);
+  lines.push(`  <testsuite name="${xmlEscape(suiteName)}" tests="${summary.total}" failures="${summary.failed}" skipped="${summary.skipped}" time="${duration.toFixed(3)}">`);
+  for (const t of tests) {
+    const attrs = `name="${xmlEscape(t.name)}" classname="${xmlEscape(t.file)}" time="${(t.duration || 0).toFixed(3)}"`;
+    if (t.status === 'passed') {
+      lines.push(`    <testcase ${attrs}/>`);
+    } else if (t.status === 'skipped') {
+      lines.push(`    <testcase ${attrs}><skipped/></testcase>`);
+    } else {
+      lines.push(`    <testcase ${attrs}>`);
+      const msg = t.error?.message || '';
+      const trace = t.output || '';
+      lines.push(`      <failure message="${xmlEscape(msg)}">${xmlEscape(trace)}</failure>`);
+      if (t.screenshot) lines.push(`      <system-out>screenshot: ${xmlEscape(t.screenshot)}</system-out>`);
+      lines.push(`    </testcase>`);
+    }
+  }
+  lines.push(`  </testsuite>`);
+  lines.push(`</testsuites>`);
+  return lines.join('\n');
 }
 
 function discoverTests(testPath) {
