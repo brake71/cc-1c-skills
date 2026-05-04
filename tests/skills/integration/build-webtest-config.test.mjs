@@ -37,6 +37,23 @@ export const steps = [
     validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'Catalogs/Контрагенты' },
   },
 
+  // Справочник Организации — маленький список с быстрым выбором (selectValue dropdown)
+  {
+    name: 'meta-compile: Справочник Организации',
+    script: 'meta-compile/scripts/meta-compile',
+    input: {
+      type: 'Catalog', name: 'Организации',
+      codeLength: 9, descriptionLength: 100,
+      quickChoice: true,
+      attributes: [
+        { name: 'ИНН', type: 'String', length: 12 },
+        { name: 'КПП', type: 'String', length: 9 },
+      ],
+    },
+    args: { '-JsonPath': '{inputFile}', '-OutputDir': '{workDir}' },
+    validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'Catalogs/Организации' },
+  },
+
   // Подчинённый каталог КонтактныеЛица — для теста getFormState.navigation (subordinate-nav)
   {
     name: 'meta-compile: Справочник КонтактныеЛица (подчинённый Контрагентам)',
@@ -71,6 +88,7 @@ export const steps = [
         { name: 'ЕдиницаИзмерения', type: 'String', length: 10 },
         { name: 'ВидНоменклатуры', type: 'EnumRef.ВидыНоменклатуры' },
         { name: 'КатегорияЦены', type: 'EnumRef.КатегорииЦен' },
+        { name: 'СпособУчёта', type: 'EnumRef.СпособыУчёта' },
       ],
       fillChecking: { 'Description': 'ShowError' },
     },
@@ -102,6 +120,18 @@ export const steps = [
     validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'Enums/КатегорииЦен' },
   },
 
+  // Перечисление СпособыУчёта — для radio с видом Tumbler (fillFields branch #3)
+  {
+    name: 'meta-compile: Перечисление СпособыУчёта',
+    script: 'meta-compile/scripts/meta-compile',
+    input: {
+      type: 'Enum', name: 'СпособыУчёта',
+      values: ['ПоСреднему', 'ФИФО'],
+    },
+    args: { '-JsonPath': '{inputFile}', '-OutputDir': '{workDir}' },
+    validate: { script: 'meta-validate/scripts/meta-validate', flag: '-ObjectPath', path: 'Enums/СпособыУчёта' },
+  },
+
   // Документ ПриходнаяНакладная — шапка + ТЧ
   {
     name: 'meta-compile: Документ ПриходнаяНакладная',
@@ -109,6 +139,7 @@ export const steps = [
     input: {
       type: 'Document', name: 'ПриходнаяНакладная',
       attributes: [
+        { name: 'Организация', type: 'CatalogRef.Организации' },
         { name: 'Контрагент', type: 'CatalogRef.Контрагенты' },
         { name: 'Склад', type: 'String', length: 50 },
         { name: 'Комментарий', type: 'String', length: 200 },
@@ -199,6 +230,7 @@ export const steps = [
 \tКонецЕсли;
 \tНачатьТранзакцию();
 \tПопытка
+\t\tЗаполнитьОрганизации();
 \t\tЗаполнитьКонтрагентов();
 \t\tЗаполнитьНоменклатуру();
 \t\tЗаполнитьДокументы();
@@ -208,6 +240,19 @@ export const steps = [
 \t\tОтменитьТранзакцию();
 \t\tВызватьИсключение;
 \tКонецПопытки;
+КонецПроцедуры
+
+Процедура ЗаполнитьОрганизации()
+\tСписок = Новый Массив;
+\tСписок.Добавить(Новый Структура("Имя,ИНН,КПП", "Альфа", "7800000001", "780000001"));
+\tСписок.Добавить(Новый Структура("Имя,ИНН,КПП", "Бета",  "7800000002", "780000002"));
+\tДля Каждого Запись Из Список Цикл
+\t\tЭлемент = Справочники.Организации.СоздатьЭлемент();
+\t\tЭлемент.Наименование = Запись.Имя;
+\t\tЭлемент.ИНН = Запись.ИНН;
+\t\tЭлемент.КПП = Запись.КПП;
+\t\tЭлемент.Записать();
+\tКонецЦикла;
 КонецПроцедуры
 
 Процедура ЗаполнитьКонтрагентов()
@@ -264,9 +309,16 @@ export const steps = [
 \tЕсли Контрагенты.Количество() = 0 Или Номенклатура.Количество() = 0 Тогда
 \t\tВозврат;
 \tКонецЕсли;
+\tЗапросО = Новый Запрос("ВЫБРАТЬ ПЕРВЫЕ 1 Организации.Ссылка КАК Организация ИЗ Справочник.Организации КАК Организации");
+\tВыборкаО = ЗапросО.Выполнить().Выбрать();
+\tОрганизация = Неопределено;
+\tЕсли ВыборкаО.Следующий() Тогда
+\t\tОрганизация = ВыборкаО.Организация;
+\tКонецЕсли;
 \tДля Сч = 1 По 3 Цикл
 \t\tДок = Документы.ПриходнаяНакладная.СоздатьДокумент();
 \t\tДок.Дата = ТекущаяДата();
+\t\tДок.Организация = Организация;
 \t\tДок.Контрагент = Контрагенты[(Сч - 1) % Контрагенты.Количество()];
 \t\tДок.Склад = "Основной";
 \t\tДля Поз = 1 По 3 Цикл
@@ -446,7 +498,25 @@ export const steps = [
             { input: 'Артикул', path: 'Объект.Артикул', title: 'Артикул' },
             { input: 'ВидНоменклатуры', path: 'Объект.ВидНоменклатуры', title: 'Вид номенклатуры' },
             { input: 'Цена', path: 'Объект.Цена', title: 'Цена' },
-            { input: 'КатегорияЦены', path: 'Объект.КатегорияЦены', title: 'Категория цены' },
+            { radio: 'КатегорияЦены', path: 'Объект.КатегорияЦены',
+              title: 'Категория цены',
+              radioButtonType: 'RadioButtons',
+              titleLocation: 'Top',
+              choiceList: [
+                { value: 'Enum.КатегорииЦен.EnumValue.Розничная',  presentation: 'Розничная' },
+                { value: 'Enum.КатегорииЦен.EnumValue.Оптовая',    presentation: 'Оптовая' },
+                { value: 'Enum.КатегорииЦен.EnumValue.Закупочная', presentation: 'Закупочная' },
+              ],
+            },
+            { radio: 'СпособУчёта', path: 'Объект.СпособУчёта',
+              title: 'Способ учёта',
+              radioButtonType: 'Tumbler',
+              titleLocation: 'Top',
+              choiceList: [
+                { value: 'Enum.СпособыУчёта.EnumValue.ПоСреднему', presentation: 'По среднему' },
+                { value: 'Enum.СпособыУчёта.EnumValue.ФИФО',      presentation: 'ФИФО' },
+              ],
+            },
             { check: 'Активен', path: 'Объект.Активен', title: 'Активен' },
             { input: 'ДатаПоступления', path: 'Объект.ДатаПоступления', title: 'Дата поступления' },
           ]},
@@ -507,6 +577,7 @@ export const steps = [
         { name: 'Объект', type: 'DocumentObject.ПриходнаяНакладная', main: true },
       ],
       elements: [
+        { input: 'Организация', path: 'Объект.Организация', title: 'Организация' },
         { input: 'Контрагент', path: 'Объект.Контрагент', title: 'Контрагент' },
         { input: 'Склад', path: 'Объект.Склад', title: 'Склад' },
         { input: 'Комментарий', path: 'Объект.Комментарий', title: 'Комментарий' },
@@ -654,11 +725,13 @@ export const steps = [
       name: 'Склад',
       synonym: 'Склад',
       content: [
+        'Catalog.Организации',
         'Catalog.Контрагенты',
         'Catalog.КонтактныеЛица',
         'Catalog.Номенклатура',
         'Enum.ВидыНоменклатуры',
         'Enum.КатегорииЦен',
+        'Enum.СпособыУчёта',
         'Document.ПриходнаяНакладная',
         'Report.ОстаткиТоваров',
       ],
@@ -689,6 +762,7 @@ export const steps = [
     input: {
       name: 'Администратор',
       objects: [
+        'Catalog.Организации: Read View Add Update Delete',
         'Catalog.Контрагенты: Read View Add Update Delete',
         'Catalog.КонтактныеЛица: Read View Add Update Delete',
         'Catalog.Номенклатура: Read View Add Update Delete',
