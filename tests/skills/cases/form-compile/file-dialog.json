@@ -23,7 +23,7 @@
         { "check": "ПерваяСтрокаЗаголовок", "path": "ПерваяСтрокаЗаголовок" }
       ]},
       { "input": "Результат", "path": "Результат", "multiLine": true, "height": 8, "readOnly": true, "title": "Лог" },
-      { "group": "horizontal", "name": "ГруппаКнопок", "children": [
+      { "autoCmdBar": "ФормаКоманднаяПанель", "children": [
         { "button": "Загрузить", "command": "Загрузить", "defaultButton": true },
         { "button": "Закрыть", "stdCommand": "Close" }
       ]}

@@ -199,6 +199,35 @@
 | `path` | string | DataPath |
 | `titleLocation` | string | Расположение заголовка |
 
+#### radio — RadioButtonField
+
+```json
+{
+  "radio": "СпособКурса",
+  "path": "Объект.СпособУстановкиКурса",
+  "radioButtonType": "Auto",
+  "choiceList": [
+    { "value": "Enum.СпособыКурса.EnumValue.Авто",   "presentation": "автоматически" },
+    { "value": "Enum.СпособыКурса.EnumValue.Ручной", "presentation": { "ru": "вручную", "en": "manual" } }
+  ]
+}
+```
+
+| Свойство | Тип | Описание |
+|----------|-----|----------|
+| `path` | string | DataPath |
+| `radioButtonType` | string | `Auto` (по умолчанию), `RadioButtons`, `Tumbler` |
+| `columnsCount` | int | Число колонок раскладки |
+| `titleLocation` | string | Расположение заголовка (компилятор подставляет `None`, если не задан) |
+| `choiceList` | array | Варианты выбора: массив `{ value, presentation }` |
+
+`choiceList[*]`:
+
+| Свойство | Тип | Описание |
+|----------|-----|----------|
+| `value` | string/number/bool | Значение варианта. Для перечисления — `"Enum.ИмяТипа.EnumValue.ИмяЗначения"` (xsi:type автоматически: `xr:DesignTimeRef` / `xs:string` / `xs:decimal` / `xs:boolean`) |
+| `presentation` | string или object | Текст рядом с переключателем. Строка → ru; объект `{ru, en, ...}` → мультиязык. Если не задано — выводится из имени значения |
+
 #### label — LabelDecoration
 
 ```json
@@ -239,7 +268,7 @@
 | Свойство | Тип | Описание |
 |----------|-----|----------|
 | `path` | string | DataPath |
-| `columns` | array | Колонки (элементы input/check/labelField/picField) |
+| `columns` | array | Колонки (элементы input/check/labelField/picField, либо `columnGroup` для группировки) |
 | `representation` | string | `List`, `Tree`, `HierarchicalList` |
 | `changeRowSet` | bool | Разрешить добавление/удаление строк |
 | `changeRowOrder` | bool | Разрешить перемещение строк |
@@ -248,6 +277,33 @@
 | `footer` | bool | Показывать подвал |
 | `commandBarLocation` | string | `None`, `Top`, `Bottom`, `Auto` |
 | `searchStringLocation` | string | `None`, `Top`, `Bottom`, `CommandBar`, `Auto` |
+
+#### columnGroup — ColumnGroup
+
+Группа колонок таблицы. Используется только внутри `columns` таблицы. Допускается вложение `columnGroup` в `columnGroup`.
+
+```json
+{ "table": "Список", "path": "Список", "columns": [
+    { "columnGroup": "horizontal", "name": "ГруппаДата", "title": "Срок", "children": [
+        { "input": "ДатаНачала", "path": "Список.ДатаНачала" },
+        { "input": "ДатаОкончания", "path": "Список.ДатаОкончания" }
+    ]},
+    { "columnGroup": "inCell", "name": "ГруппаИсполнитель", "showInHeader": true, "children": [
+        { "input": "Исполнитель", "path": "Список.Исполнитель" }
+    ]}
+]}
+```
+
+| Свойство | Тип | Описание |
+|----------|-----|----------|
+| `columnGroup` | string | Ориентация: `horizontal`, `vertical`, `inCell` (склейка колонок в одной ячейке шапки) |
+| `name` | string | Имя элемента (рекомендуется задавать явно) |
+| `title` | string/object | Заголовок группы |
+| `showTitle` | bool | Показывать заголовок |
+| `showInHeader` | bool | Показывать в шапке таблицы |
+| `width` | int | Ширина |
+| `horizontalStretch` | bool | Растягивание |
+| `children` | array | Колонки внутри группы |
 
 #### pages / page — Pages / Page
 
@@ -437,6 +493,7 @@ Pages поддерживает `pagesRepresentation`: `None`, `TabsOnTop`, `Tabs
 | UsualGroup | ExtendedTooltip |
 | InputField | ContextMenu, ExtendedTooltip |
 | CheckBoxField | ContextMenu, ExtendedTooltip |
+| RadioButtonField | ContextMenu, ExtendedTooltip |
 | LabelDecoration | ContextMenu, ExtendedTooltip |
 | LabelField | ContextMenu, ExtendedTooltip |
 | PictureDecoration | ContextMenu, ExtendedTooltip |

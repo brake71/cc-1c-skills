@@ -7,16 +7,30 @@
 		</v8:item>
 	</Title>
 	<AutoTitle>false</AutoTitle>
-	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
+	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1">
+		<ChildItems>
+			<Button name="Загрузить" id="1">
+				<Type>CommandBarButton</Type>
+				<CommandName>Form.Command.Загрузить</CommandName>
+				<DefaultButton>true</DefaultButton>
+				<ExtendedTooltip name="ЗагрузитьРасширеннаяПодсказка" id="2"/>
+			</Button>
+			<Button name="Закрыть" id="3">
+				<Type>CommandBarButton</Type>
+				<CommandName>Form.StandardCommand.Close</CommandName>
+				<ExtendedTooltip name="ЗакрытьРасширеннаяПодсказка" id="4"/>
+			</Button>
+		</ChildItems>
+	</AutoCommandBar>
 	<Events>
 		<Event name="OnCreateAtServer">ПриСозданииНаСервере</Event>
 	</Events>
 	<ChildItems>
-		<UsualGroup name="ГруппаФайл" id="1">
+		<UsualGroup name="ГруппаФайл" id="5">
 			<Group>Horizontal</Group>
-			<ExtendedTooltip name="ГруппаФайлРасширеннаяПодсказка" id="2"/>
+			<ExtendedTooltip name="ГруппаФайлРасширеннаяПодсказка" id="6"/>
 			<ChildItems>
-				<InputField name="ИмяФайла" id="3">
+				<InputField name="ИмяФайла" id="7">
 					<DataPath>ИмяФайла</DataPath>
 					<Title>
 						<v8:item>
@@ -30,21 +44,21 @@
 							<v8:content>Выберите файл...</v8:content>
 						</v8:item>
 					</InputHint>
-					<ContextMenu name="ИмяФайлаКонтекстноеМеню" id="4"/>
-					<ExtendedTooltip name="ИмяФайлаРасширеннаяПодсказка" id="5"/>
+					<ContextMenu name="ИмяФайлаКонтекстноеМеню" id="8"/>
+					<ExtendedTooltip name="ИмяФайлаРасширеннаяПодсказка" id="9"/>
 					<Events>
 						<Event name="StartChoice">ИмяФайлаНачалоВыбора</Event>
 					</Events>
 				</InputField>
-				<CheckBoxField name="ПерваяСтрокаЗаголовок" id="6">
+				<CheckBoxField name="ПерваяСтрокаЗаголовок" id="10">
 					<DataPath>ПерваяСтрокаЗаголовок</DataPath>
 					<TitleLocation>Right</TitleLocation>
-					<ContextMenu name="ПерваяСтрокаЗаголовокКонтекстноеМеню" id="7"/>
-					<ExtendedTooltip name="ПерваяСтрокаЗаголовокРасширеннаяПодсказка" id="8"/>
+					<ContextMenu name="ПерваяСтрокаЗаголовокКонтекстноеМеню" id="11"/>
+					<ExtendedTooltip name="ПерваяСтрокаЗаголовокРасширеннаяПодсказка" id="12"/>
 				</CheckBoxField>
 			</ChildItems>
 		</UsualGroup>
-		<InputField name="Результат" id="9">
+		<InputField name="Результат" id="13">
 			<DataPath>Результат</DataPath>
 			<Title>
 				<v8:item>
@@ -56,33 +70,18 @@
 			<MultiLine>true</MultiLine>
 			<AutoMaxWidth>false</AutoMaxWidth>
 			<Height>8</Height>
-			<ContextMenu name="РезультатКонтекстноеМеню" id="10"/>
-			<ExtendedTooltip name="РезультатРасширеннаяПодсказка" id="11"/>
+			<ContextMenu name="РезультатКонтекстноеМеню" id="14"/>
+			<ExtendedTooltip name="РезультатРасширеннаяПодсказка" id="15"/>
 		</InputField>
-		<UsualGroup name="ГруппаКнопок" id="12">
-			<Group>Horizontal</Group>
-			<ExtendedTooltip name="ГруппаКнопокРасширеннаяПодсказка" id="13"/>
-			<ChildItems>
-				<Button name="Загрузить" id="14">
-					<CommandName>Form.Command.Загрузить</CommandName>
-					<DefaultButton>true</DefaultButton>
-					<ExtendedTooltip name="ЗагрузитьРасширеннаяПодсказка" id="15"/>
-				</Button>
-				<Button name="Закрыть" id="16">
-					<CommandName>Form.StandardCommand.Close</CommandName>
-					<ExtendedTooltip name="ЗакрытьРасширеннаяПодсказка" id="17"/>
-				</Button>
-			</ChildItems>
-		</UsualGroup>
 	</ChildItems>
 	<Attributes>
-		<Attribute name="Объект" id="18">
+		<Attribute name="Объект" id="16">
 			<Type>
 				<v8:Type>cfg:DataProcessorObject.ЗагрузкаИзФайла</v8:Type>
 			</Type>
 			<MainAttribute>true</MainAttribute>
 		</Attribute>
-		<Attribute name="ИмяФайла" id="19">
+		<Attribute name="ИмяФайла" id="17">
 			<Title>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -97,7 +96,7 @@
 				</v8:StringQualifiers>
 			</Type>
 		</Attribute>
-		<Attribute name="ПерваяСтрокаЗаголовок" id="20">
+		<Attribute name="ПерваяСтрокаЗаголовок" id="18">
 			<Title>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -108,7 +107,7 @@
 				<v8:Type>xs:boolean</v8:Type>
 			</Type>
 		</Attribute>
-		<Attribute name="Результат" id="21">
+		<Attribute name="Результат" id="19">
 			<Title>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -125,7 +124,7 @@
 		</Attribute>
 	</Attributes>
 	<Commands>
-		<Command name="Загрузить" id="22">
+		<Command name="Загрузить" id="20">
 			<Title>
 				<v8:item>
 					<v8:lang>ru</v8:lang>

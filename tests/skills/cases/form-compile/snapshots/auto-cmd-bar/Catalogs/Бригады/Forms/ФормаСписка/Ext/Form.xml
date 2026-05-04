@@ -10,6 +10,7 @@
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1">
 		<ChildItems>
 			<Button name="ИзменитьВыделенные" id="1">
+				<Type>CommandBarButton</Type>
 				<CommandName>Form.Command.ИзменитьВыделенные</CommandName>
 				<LocationInCommandBar>InAdditionalSubmenu</LocationInCommandBar>
 				<ExtendedTooltip name="ИзменитьВыделенныеРасширеннаяПодсказка" id="2"/>

@@ -14,11 +14,13 @@
 		<CommandBar name="Панель" id="1">
 			<ChildItems>
 				<Button name="Выполнить" id="2">
+					<Type>CommandBarButton</Type>
 					<CommandName>Form.Command.Выполнить</CommandName>
 					<DefaultButton>true</DefaultButton>
 					<ExtendedTooltip name="ВыполнитьРасширеннаяПодсказка" id="3"/>
 				</Button>
 				<Button name="Закрыть" id="4">
+					<Type>CommandBarButton</Type>
 					<CommandName>Form.StandardCommand.Close</CommandName>
 					<ExtendedTooltip name="ЗакрытьРасширеннаяПодсказка" id="5"/>
 				</Button>

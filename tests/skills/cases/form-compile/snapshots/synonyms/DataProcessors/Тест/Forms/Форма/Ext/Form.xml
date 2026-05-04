@@ -10,6 +10,7 @@
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1">
 		<ChildItems>
 			<Button name="Кн1" id="1">
+				<Type>CommandBarButton</Type>
 				<CommandName>Form.Command.Кн1</CommandName>
 				<ExtendedTooltip name="Кн1РасширеннаяПодсказка" id="2"/>
 			</Button>
@@ -24,6 +25,7 @@
 		<CommandBar name="ДопПанель" id="6">
 			<ChildItems>
 				<Button name="Кн2" id="7">
+					<Type>CommandBarButton</Type>
 					<CommandName>Form.Command.Кн2</CommandName>
 					<ExtendedTooltip name="Кн2РасширеннаяПодсказка" id="8"/>
 				</Button>
