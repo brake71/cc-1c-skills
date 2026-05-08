@@ -1,4 +1,4 @@
-﻿# form-add v1.4 — Add managed form to 1C config object
+﻿# form-add v1.5 — Add managed form to 1C config object
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -15,6 +15,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
 # --- Detect XML format version ---
 
