@@ -1,4 +1,4 @@
-// web-test browser v1.11 — Playwright browser management for 1C web client
+// web-test browser v1.12 — Playwright browser management for 1C web client
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * Playwright browser management for 1C web client.
@@ -42,6 +42,10 @@ let highlightMode = false;
 // connect() does NOT use this Map — it preserves legacy single-session behavior for exec/run/start.
 const contexts = new Map();
 let activeContextName = null;
+// Isolation mode for the current cmdTest session — set by the first createContext call.
+// 'tab': all contexts share one persistent context (one window, multiple tabs, extension loads reliably).
+// 'window': each context gets its own BrowserContext (separate window per context, full cookie isolation, extension may not load).
+let activeMode = null;
 
 const LOAD_TIMEOUT = 60000;
 const INIT_TIMEOUT = 60000;
@@ -189,6 +193,7 @@ export async function disconnect() {
     }
     contexts.clear();
     activeContextName = null;
+    activeMode = null;
   }
 
   // Single-session path (connect): auto-stop recording if active
@@ -315,7 +320,7 @@ function _attachSessionListeners(pg, slot, name) {
  * Use this from run.mjs cmdTest only — exec/run/start use connect() and stay on the
  * legacy persistent-context path.
  */
-export async function createContext(name, url, { extensionPath } = {}) {
+export async function createContext(name, url, { extensionPath, isolation = 'tab' } = {}) {
   if (contexts.has(name)) {
     await setActiveContext(name);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: LOAD_TIMEOUT });
@@ -325,35 +330,65 @@ export async function createContext(name, url, { extensionPath } = {}) {
     return await getPageState();
   }
 
-  // First context: launch browser. Subsequent: reuse existing browser.
-  if (!browser) {
+  if (!['tab', 'window'].includes(isolation)) {
+    throw new Error(`createContext: invalid isolation "${isolation}", expected 'tab' or 'window'`);
+  }
+  if (activeMode && activeMode !== isolation) {
+    throw new Error(`createContext: cannot mix isolation modes — first context used "${activeMode}", "${name}" requested "${isolation}". Use the same mode for all contexts in one run.`);
+  }
+
+  // First context: launch browser. Subsequent: reuse existing.
+  let isFirstContext = !browser;
+  if (isFirstContext) {
     const extPath = findExtension(extensionPath);
     const launchArgs = ['--start-maximized'];
     if (extPath) {
       launchArgs.push('--disable-extensions-except=' + extPath, '--load-extension=' + extPath);
     }
-    browser = await chromium.launch({ headless: false, args: launchArgs });
-  } else if (typeof browser.newContext !== 'function') {
-    throw new Error('createContext: existing browser was created via connect()/launchPersistentContext and cannot host additional isolated contexts. Call disconnect() first.');
+    if (isolation === 'tab') {
+      // Persistent context: extension loads reliably, one window with tabs per context
+      persistentUserDataDir = pathJoin(tmpdir(), 'pw-1c-test-' + Date.now());
+      mkdirSync(persistentUserDataDir, { recursive: true });
+      browser = await chromium.launchPersistentContext(persistentUserDataDir, {
+        headless: false,
+        args: launchArgs,
+        viewport: null,
+        permissions: ['clipboard-read', 'clipboard-write'],
+      });
+    } else {
+      // Window mode: separate BrowserContext per slot, full cookie isolation
+      browser = await chromium.launch({ headless: false, args: launchArgs });
+    }
+    activeMode = isolation;
   }
 
   // Save current active before switching
   _saveActiveSlot();
 
-  const newCtx = await browser.newContext({
-    viewport: null,
-    permissions: ['clipboard-read', 'clipboard-write'],
-  });
-  const newPage = await newCtx.newPage();
+  // Create slot — page differs by mode
+  let newCtx, newPage;
+  if (activeMode === 'tab') {
+    // Reuse the persistent context for all slots; each slot gets its own page (tab)
+    newCtx = browser;
+    if (isFirstContext) {
+      newPage = browser.pages()[0] || await browser.newPage();
+    } else {
+      newPage = await browser.newPage();
+    }
+  } else {
+    // Window mode: each slot owns its BrowserContext + page
+    newCtx = await browser.newContext({
+      viewport: null,
+      permissions: ['clipboard-read', 'clipboard-write'],
+    });
+    newPage = await newCtx.newPage();
+  }
 
   const slot = {
     context: newCtx,
     page: newPage,
     sessionPrefix: null,
     seanceId: null,
-    recorder: null,
-    lastCaptions: [],
-    lastRecordingDuration: null,
     highlightMode: false,
   };
   contexts.set(name, slot);

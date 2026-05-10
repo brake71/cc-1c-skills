@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// web-test run v1.8 — CLI runner for 1C web client automation
+// web-test run v1.9 — CLI runner for 1C web client automation
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * CLI runner for 1C web client automation.
@@ -396,11 +396,12 @@ async function cmdTest(rawArgs) {
   }
   // Build context registry: name → url. Supports config.contexts or single config.url / CLI url.
   // CLI url overrides default context's url.
-  const contextSpecs = {}; // name → { url }
+  const contextSpecs = {}; // name → { url, isolation }
   let defaultContextName = 'default';
+  const defaultIsolation = config.isolation || 'tab';
   if (config.contexts && typeof config.contexts === 'object' && Object.keys(config.contexts).length) {
     for (const [n, spec] of Object.entries(config.contexts)) {
-      contextSpecs[n] = { url: spec.url };
+      contextSpecs[n] = { url: spec.url, isolation: spec.isolation };
     }
     defaultContextName = config.defaultContext || Object.keys(config.contexts)[0];
     if (url) contextSpecs[defaultContextName] = { url }; // CLI override of default
@@ -504,7 +505,7 @@ async function cmdTest(rawArgs) {
     if (browser.hasContext(name)) return;
     const spec = contextSpecs[name];
     if (!spec) throw new Error(`Unknown context "${name}". Defined: [${Object.keys(contextSpecs).join(', ')}]`);
-    await browser.createContext(name, spec.url);
+    await browser.createContext(name, spec.url, { isolation: spec.isolation || defaultIsolation });
   }
 
   try {
