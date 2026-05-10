@@ -1,4 +1,4 @@
-// web-test browser v1.10 — Playwright browser management for 1C web client
+// web-test browser v1.11 — Playwright browser management for 1C web client
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * Playwright browser management for 1C web client.
@@ -169,18 +169,12 @@ export async function connect(url, { extensionPath } = {}) {
  * Sends POST /e1cib/logout to release the license before closing.
  */
 export async function disconnect() {
-  // Multi-context path: stop recordings + logout each slot before closing browser
+  // Multi-context path: stop recording + logout each slot before closing browser
   if (contexts.size > 0) {
-    // Save current active first so iteration is consistent
     _saveActiveSlot();
-    for (const [name, slot] of contexts.entries()) {
-      // Stop recording per slot if any
-      if (slot.recorder) {
-        _activateSlot(name);
-        try { await stopRecording(); } catch {}
-        // re-save in case stopRecording mutated state
-        _saveActiveSlot();
-      }
+    // Recorder is global — one stop covers all contexts
+    if (recorder) {
+      try { await stopRecording(); } catch {}
     }
     for (const [, slot] of contexts.entries()) {
       if (slot.page && !slot.page.isClosed() && slot.seanceId && slot.sessionPrefix) {
@@ -277,10 +271,10 @@ function _saveActiveSlot() {
   slot.page = page;
   slot.sessionPrefix = sessionPrefix;
   slot.seanceId = seanceId;
-  slot.recorder = recorder;
-  slot.lastCaptions = lastCaptions;
-  slot.lastRecordingDuration = lastRecordingDuration;
   slot.highlightMode = highlightMode;
+  // Note: `recorder`, `lastCaptions`, `lastRecordingDuration` are intentionally NOT
+  // mirrored per-slot. A multi-context recording produces one continuous output file —
+  // the recorder follows the active page via recorder._attachPage(), not per-slot state.
 }
 
 /** Load a slot's state into module-level vars and mark it active. */
@@ -290,9 +284,6 @@ function _activateSlot(name) {
   page = slot.page;
   sessionPrefix = slot.sessionPrefix;
   seanceId = slot.seanceId;
-  recorder = slot.recorder;
-  lastCaptions = slot.lastCaptions || [];
-  lastRecordingDuration = slot.lastRecordingDuration;
   highlightMode = slot.highlightMode || false;
   activeContextName = name;
 }
@@ -382,8 +373,16 @@ export async function createContext(name, url, { extensionPath } = {}) {
 export async function setActiveContext(name) {
   if (activeContextName === name) return;
   if (!contexts.has(name)) throw new Error(`Context "${name}" not found. Available: [${[...contexts.keys()].join(', ')}]`);
+  // If a recording is active, flush the outgoing page's last frame so the gap is filled
+  // up to the moment of the switch (avoids a "jump" in video time).
+  if (recorder && recorder._flushFrames) recorder._flushFrames();
   _saveActiveSlot();
   _activateSlot(name);
+  // If the recording is still alive (it lives across slots — we keep the same ffmpeg/output),
+  // re-attach its screencast to the newly active page.
+  if (recorder && recorder._attachPage) {
+    await recorder._attachPage(page);
+  }
 }
 
 export function listContexts() {
@@ -5031,10 +5030,7 @@ export async function startRecording(outputPath, opts = {}) {
   const resolvedPath = resolveProjectPath(outputPath);
   mkdirSync(dirname(resolvedPath), { recursive: true });
 
-  // Create CDP session for screencast
-  const cdp = await page.context().newCDPSession(page);
-
-  // Spawn ffmpeg process
+  // Spawn ffmpeg process — single output file across context switches
   const ffmpeg = spawn(ffmpegPath, [
     '-y',                          // overwrite output
     '-f', 'image2pipe',            // input: piped images
@@ -5050,71 +5046,86 @@ export async function startRecording(outputPath, opts = {}) {
     resolvedPath
   ], { stdio: ['pipe', 'ignore', 'pipe'] });
 
-  let ffmpegError = '';
-  ffmpeg.stderr.on('data', d => { ffmpegError += d.toString(); });
-  ffmpeg.on('error', err => { ffmpegError += err.message; });
+  ffmpeg.on('error', err => { if (recorder) recorder.ffmpegError += err.message; });
 
-  // Listen for screencast frames and pipe to ffmpeg
-  // CDP sends frames only on screen changes, so we duplicate frames
-  // to fill gaps and maintain real-time playback speed
   const frameDuration = 1000 / fps;
-  let lastFrameTime = null;
-  let lastFrameBuf = null;
+  const speechRate = opts.speechRate || 70; // ms per character for smart TTS wait
 
-  cdp.on('Page.screencastFrame', async ({ data, sessionId }) => {
+  // Frame handler shared across CDP sessions (lives in recorder, not closure):
+  // when the active context switches, we attach a new CDP session and route its
+  // frames to the same ffmpeg pipe — preserving a single continuous timeline.
+  const frameHandler = async ({ data, sessionId }, cdp) => {
+    if (!recorder) return;
     const buf = Buffer.from(data, 'base64');
     const now = Date.now();
-
     if (!ffmpeg.stdin.destroyed) {
       let framesWritten = 0;
-      if (lastFrameTime && lastFrameBuf) {
-        // Fill the gap with duplicates of the previous frame
-        const gap = now - lastFrameTime;
+      if (recorder.lastFrameTime && recorder.lastFrameBuf) {
+        const gap = now - recorder.lastFrameTime;
         const dupes = Math.round(gap / frameDuration) - 1;
         for (let i = 0; i < dupes && i < fps * 30; i++) {
-          ffmpeg.stdin.write(lastFrameBuf);
+          ffmpeg.stdin.write(recorder.lastFrameBuf);
           framesWritten++;
         }
       }
       ffmpeg.stdin.write(buf);
       framesWritten++;
-      // Track actual video timeline position (accounts for frame duplication)
-      if (recorder) recorder.videoTimeMs += framesWritten * frameDuration;
+      recorder.videoTimeMs += framesWritten * frameDuration;
     }
-
-    lastFrameTime = now;
-    lastFrameBuf = buf;
+    recorder.lastFrameTime = now;
+    recorder.lastFrameBuf = buf;
     try { await cdp.send('Page.screencastFrameAck', { sessionId }); } catch {}
-  });
-
-  // Start the screencast
-  await cdp.send('Page.startScreencast', {
-    format: 'jpeg',
-    quality,
-    everyNthFrame: 1
-  });
-
-  // Expose a frame-writing helper on the recorder object.
-  // During static periods (e.g. smart TTS pauses), CDP may not send screencast
-  // frames. Call _flushFrames() to fill the gap with duplicates of the last frame,
-  // keeping video timeline in sync with wall-clock time.
-  const _flushFrames = () => {
-    if (!lastFrameBuf || !lastFrameTime || ffmpeg.stdin.destroyed) return;
-    const now = Date.now();
-    const gap = now - lastFrameTime;
-    const dupes = Math.round(gap / frameDuration);
-    for (let i = 0; i < dupes; i++) {
-      ffmpeg.stdin.write(lastFrameBuf);
-      if (recorder) recorder.videoTimeMs += frameDuration;
-    }
-    if (dupes > 0) lastFrameTime = now;
   };
 
-  const speechRate = opts.speechRate || 70; // ms per character for smart TTS wait
-  recorder = { cdp, ffmpeg, startTime: Date.now(), outputPath: resolvedPath, ffmpegError: '', captions: [], videoTimeMs: 0, _flushFrames, speechRate };
-  // Redirect stderr accumulation to the recorder object
-  ffmpeg.stderr.removeAllListeners('data');
+  // Duplicate the last frame to fill wall-clock gaps (static periods, context switches).
+  const _flushFrames = () => {
+    if (!recorder || !recorder.lastFrameBuf || !recorder.lastFrameTime || ffmpeg.stdin.destroyed) return;
+    const now = Date.now();
+    const gap = now - recorder.lastFrameTime;
+    const dupes = Math.round(gap / frameDuration);
+    for (let i = 0; i < dupes; i++) {
+      ffmpeg.stdin.write(recorder.lastFrameBuf);
+      recorder.videoTimeMs += frameDuration;
+    }
+    if (dupes > 0) recorder.lastFrameTime = now;
+  };
+
+  // Attach screencast to a specific page. Stops the old CDP first (if any).
+  // Called by startRecording for the initial page, and by setActiveContext when
+  // the active context changes mid-recording.
+  const _attachPage = async (targetPage) => {
+    if (recorder.cdp) {
+      _flushFrames(); // freeze the last frame of the outgoing page up to "now"
+      try { await recorder.cdp.send('Page.stopScreencast'); } catch {}
+      try { await recorder.cdp.detach(); } catch {}
+      recorder.cdp = null;
+    }
+    const cdp = await targetPage.context().newCDPSession(targetPage);
+    cdp.on('Page.screencastFrame', (ev) => frameHandler(ev, cdp));
+    await cdp.send('Page.startScreencast', { format: 'jpeg', quality, everyNthFrame: 1 });
+    recorder.cdp = cdp;
+    recorder.activePage = targetPage;
+  };
+
+  recorder = {
+    cdp: null,
+    activePage: null,
+    ffmpeg,
+    startTime: Date.now(),
+    outputPath: resolvedPath,
+    ffmpegError: '',
+    captions: [],
+    videoTimeMs: 0,
+    frameDuration,
+    lastFrameTime: null,
+    lastFrameBuf: null,
+    _flushFrames,
+    _attachPage,
+    speechRate,
+  };
   ffmpeg.stderr.on('data', d => { recorder.ffmpegError += d.toString(); });
+
+  await _attachPage(page);
 }
 
 /**
