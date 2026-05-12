@@ -1,10 +1,10 @@
 export const name = 'fillFields: text, checkbox, date, dropdown, reference';
 export const tags = ['fillfields', 'smoke'];
-export const timeout = 60000;
+export const timeout = 120000;
 
 const findField = (state, name) => state.fields?.find(f => f.name === name || f.label === name);
 
-export default async function({ navigateSection, openCommand, clickElement, fillFields, filterList, closeForm, getFormState, assert, step, log }) {
+export default async function({ navigateSection, openCommand, clickElement, fillFields, fillTableRow, selectValue, filterList, closeForm, getFormState, assert, step, log }) {
 
   await step('text+checkbox+date+dropdown: fillFields на Номенклатура', async () => {
     await navigateSection('Склад');
@@ -119,6 +119,38 @@ export default async function({ navigateSection, openCommand, clickElement, fill
 
     await clickElement('ФИФО');
     log('Tumbler clicked: ФИФО');
+
+    await closeForm({ save: false });
+  });
+
+  await step('composite: selectValue с {type} в шапке и ТЧ накладной', async () => {
+    // ПриходнаяНакладная.Источник — составной тип:
+    //   CatalogRef.Контрагенты + CatalogRef.Номенклатура + CatalogRef.Организации
+    // fillFields без type→ошибка с подсказкой «specify the type»;
+    // selectValue('Источник', value, {type:'Контрагенты'}) выбирает тип в диалоге.
+    await navigateSection('Склад');
+    await openCommand('Приходная накладная');
+    await clickElement('Создать');
+
+    // Шапка: выбор Контрагента в составном поле
+    const headRes = await selectValue('Источник', 'ООО Север', { type: 'Контрагенты' });
+    log('header: type=' + headRes.selected?.type + ' method=' + headRes.selected?.method);
+    assert.equal(headRes.selected?.method, 'form', 'composite header → method=form');
+    assert.equal(headRes.selected?.type, 'Контрагенты', 'type=Контрагенты выбран');
+
+    const state1 = await getFormState();
+    const headField = state1.fields?.find(f => f.name === 'Источник');
+    assert.equal(headField?.value, 'ООО Север', 'значение в шапке установилось');
+
+    // ТЧ: добавить строку, выбрать тип Организация (квик-чойс — без формы выбора)
+    await clickElement('Добавить');
+    const rowRes = await fillTableRow(
+      { Источник: { value: 'Альфа', type: 'Организации' } },
+      { row: 0 },
+    );
+    log('row: ' + JSON.stringify(rowRes.filled?.[0]));
+    assert.equal(rowRes.filled?.[0]?.ok, true, 'composite row → ok');
+    assert.equal(rowRes.filled?.[0]?.type, 'Организации', 'выбран тип Организации в ТЧ');
 
     await closeForm({ save: false });
   });

@@ -144,6 +144,9 @@ export const steps = [
         // (04-selectvalue/direct-form проверяет open-form path; история обходит его).
         { name: 'Контрагент', type: 'CatalogRef.Контрагенты', choiceHistoryOnInput: 'DontUse' },
         { name: 'Склад', type: 'String', length: 50 },
+        // Источник — составной тип (для 03-fillfields/composite).
+        // Платформа покажет селектор типа в UI перед выбором значения.
+        { name: 'Источник', type: 'CatalogRef.Контрагенты + CatalogRef.Номенклатура + CatalogRef.Организации' },
         { name: 'Комментарий', type: 'String', length: 200 },
       ],
       tabularSections: [{
@@ -154,6 +157,8 @@ export const steps = [
           { name: 'Цена', type: 'Number', length: 15, precision: 2 },
           { name: 'Сумма', type: 'Number', length: 15, precision: 2 },
           { name: 'Согласовано', type: 'Boolean' },
+          // Источник — составной тип в ТЧ (для edit-dblclick через выбор типа)
+          { name: 'Источник', type: 'CatalogRef.Контрагенты + CatalogRef.Номенклатура + CatalogRef.Организации' },
         ],
       }],
     },
@@ -595,6 +600,7 @@ export const steps = [
         { input: 'Организация', path: 'Объект.Организация', title: 'Организация' },
         { input: 'Контрагент', path: 'Объект.Контрагент', title: 'Контрагент' },
         { input: 'Склад', path: 'Объект.Склад', title: 'Склад' },
+        { input: 'Источник', path: 'Объект.Источник', title: 'Источник' },
         { input: 'Комментарий', path: 'Объект.Комментарий', title: 'Комментарий' },
         { table: 'Товары', path: 'Объект.Товары', title: 'Товары', changeRowSet: true, columns: [
           { input: 'Номенклатура', path: 'Объект.Товары.Номенклатура', title: 'Номенклатура' },
@@ -602,6 +608,10 @@ export const steps = [
           { input: 'Цена', path: 'Объект.Товары.Цена', title: 'Цена' },
           { input: 'Сумма', path: 'Объект.Товары.Сумма', title: 'Сумма' },
           { check: 'Согласовано', path: 'Объект.Товары.Согласовано', title: 'Согласовано' },
+          // Имя элемента отличается от Источник (в шапке) — иначе ContextMenu
+          // companion-имена дублируются в одной форме. form-compile использует
+          // имя элемента, не путь, для генерации companion-имён.
+          { input: 'ИсточникТЧ', path: 'Объект.Товары.Источник', title: 'Источник' },
         ]},
       ],
     },
