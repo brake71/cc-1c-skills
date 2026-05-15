@@ -1,4 +1,4 @@
-# skd-edit v1.12 — Atomic 1C DCS editor (Python port)
+# skd-edit v1.13 — Atomic 1C DCS editor (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -299,11 +299,19 @@ def parse_calc_shorthand(s):
 
 
 def parse_param_shorthand(s):
-    result = {"name": "", "type": "", "value": None, "autoDates": False, "title": None}
+    result = {"name": "", "type": "", "value": None, "autoDates": False, "title": None, "hidden": False, "always": False}
 
     if re.search(r'@autoDates', s):
         result["autoDates"] = True
         s = re.sub(r'\s*@autoDates', '', s)
+
+    if re.search(r'@hidden\b', s):
+        result["hidden"] = True
+        s = re.sub(r'\s*@hidden\b', '', s)
+
+    if re.search(r'@always\b', s):
+        result["always"] = True
+        s = re.sub(r'\s*@always\b', '', s)
 
     # Extract optional [Title] (mirrors parse_field_shorthand)
     m = re.search(r'\[([^\]]*)\]', s)
@@ -784,6 +792,13 @@ def build_param_fragment(parsed, indent):
     if parsed["value"] is not None:
         for vl in build_param_value_xml(parsed.get("type", ""), parsed["value"], f"{i}\t"):
             lines.append(vl)
+
+    if parsed.get("hidden"):
+        lines.append(f"{i}\t<useRestriction>true</useRestriction>")
+        lines.append(f"{i}\t<availableAsField>false</availableAsField>")
+
+    if parsed.get("always"):
+        lines.append(f"{i}\t<use>Always</use>")
 
     lines.append(f"{i}</parameter>")
     fragments.append("\r\n".join(lines))
@@ -1567,6 +1582,15 @@ elif operation == "modify-parameter":
         param_name = parts[0].strip()
         rest = parts[1].strip() if len(parts) > 1 else ""
 
+        flag_hidden = False
+        flag_always = False
+        if re.search(r'@hidden\b', rest):
+            flag_hidden = True
+            rest = re.sub(r'\s*@hidden\b', '', rest).strip()
+        if re.search(r'@always\b', rest):
+            flag_always = True
+            rest = re.sub(r'\s*@always\b', '', rest).strip()
+
         param_el = find_element_by_child_value(xml_doc, "parameter", "name", param_name, SCH_NS)
         if param_el is None:
             print(f'[WARN] Parameter "{param_name}" not found -- skipped')
@@ -1682,6 +1706,37 @@ elif operation == "modify-parameter":
             for node in nodes:
                 insert_before_element(param_el, node, ref_node, child_indent)
             print(f'[OK] Parameter "{param_name}": availableValue added')
+
+        if flag_hidden:
+            ur_el = next((ch for ch in param_el if isinstance(ch.tag, str) and local_name(ch) == "useRestriction" and etree.QName(ch.tag).namespace == SCH_NS), None)
+            if ur_el is not None:
+                if (ur_el.text or "").strip() != "true":
+                    ur_el.text = "true"
+            else:
+                ref_node = next((ch for ch in param_el if isinstance(ch.tag, str) and local_name(ch) in ("expression", "availableAsField", "availableValue", "denyIncompleteValues", "use")), None)
+                for node in import_fragment(xml_doc, f"{child_indent}<useRestriction>true</useRestriction>"):
+                    insert_before_element(param_el, node, ref_node, child_indent)
+
+            af_el = next((ch for ch in param_el if isinstance(ch.tag, str) and local_name(ch) == "availableAsField" and etree.QName(ch.tag).namespace == SCH_NS), None)
+            if af_el is not None:
+                if (af_el.text or "").strip() != "false":
+                    af_el.text = "false"
+            else:
+                ref_node = next((ch for ch in param_el if isinstance(ch.tag, str) and local_name(ch) in ("availableValue", "denyIncompleteValues", "use")), None)
+                for node in import_fragment(xml_doc, f"{child_indent}<availableAsField>false</availableAsField>"):
+                    insert_before_element(param_el, node, ref_node, child_indent)
+
+            print(f'[OK] Parameter "{param_name}": @hidden applied')
+
+        if flag_always:
+            use_el = next((ch for ch in param_el if isinstance(ch.tag, str) and local_name(ch) == "use" and etree.QName(ch.tag).namespace == SCH_NS), None)
+            if use_el is not None:
+                if (use_el.text or "").strip() != "Always":
+                    use_el.text = "Always"
+            else:
+                for node in import_fragment(xml_doc, f"{child_indent}<use>Always</use>"):
+                    insert_before_element(param_el, node, None, child_indent)
+            print(f'[OK] Parameter "{param_name}": @always applied')
 
 elif operation == "rename-parameter":
     root = xml_doc

@@ -1,4 +1,4 @@
-﻿# skd-edit v1.12 — Atomic 1C DCS editor
+﻿# skd-edit v1.13 — Atomic 1C DCS editor
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -297,11 +297,21 @@ function Parse-CalcShorthand {
 function Parse-ParamShorthand {
 	param([string]$s)
 
-	$result = @{ name = ""; type = ""; value = $null; autoDates = $false; title = $null }
+	$result = @{ name = ""; type = ""; value = $null; autoDates = $false; title = $null; hidden = $false; always = $false }
 
 	if ($s -match '@autoDates') {
 		$result.autoDates = $true
 		$s = $s -replace '\s*@autoDates', ''
+	}
+
+	if ($s -match '@hidden\b') {
+		$result.hidden = $true
+		$s = $s -replace '\s*@hidden\b', ''
+	}
+
+	if ($s -match '@always\b') {
+		$result.always = $true
+		$s = $s -replace '\s*@always\b', ''
 	}
 
 	# Extract optional [Title] (mirrors Parse-FieldShorthand)
@@ -871,6 +881,15 @@ function Build-ParamFragment {
 	if ($null -ne $parsed.value) {
 		$valueLines = Build-ParamValueXml -type $parsed.type -value $parsed.value -indent "$i`t"
 		foreach ($vl in $valueLines) { $lines += $vl }
+	}
+
+	if ($parsed.hidden) {
+		$lines += "$i`t<useRestriction>true</useRestriction>"
+		$lines += "$i`t<availableAsField>false</availableAsField>"
+	}
+
+	if ($parsed.always) {
+		$lines += "$i`t<use>Always</use>"
 	}
 
 	$lines += "$i</parameter>"
@@ -1796,6 +1815,12 @@ switch ($Operation) {
 			$paramName = $parts[0].Trim()
 			$rest = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
 
+			# Extract @hidden / @always flags
+			$flagHidden = $false
+			$flagAlways = $false
+			if ($rest -match '@hidden\b') { $flagHidden = $true; $rest = ($rest -replace '\s*@hidden\b', '').Trim() }
+			if ($rest -match '@always\b') { $flagAlways = $true; $rest = ($rest -replace '\s*@always\b', '').Trim() }
+
 			# Find parameter element
 			$paramEl = Find-ElementByChildValue $xmlDoc.DocumentElement "parameter" "name" $paramName $schNs
 			if (-not $paramEl) {
@@ -1969,6 +1994,57 @@ switch ($Operation) {
 					Insert-BeforeElement $paramEl $node $refNode $childIndent
 				}
 				Write-Host "[OK] Parameter `"$paramName`": availableValue added"
+			}
+
+			# Process @hidden / @always flags (idempotent)
+			if ($flagHidden) {
+				# useRestriction → true (insert after <value>, before <expression>/<availableAsField>/...)
+				$urEl = $null
+				foreach ($ch in $paramEl.ChildNodes) {
+					if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'useRestriction' -and $ch.NamespaceURI -eq $schNs) { $urEl = $ch; break }
+				}
+				if ($urEl) {
+					if ($urEl.InnerText.Trim() -ne 'true') { $urEl.InnerText = 'true' }
+				} else {
+					$refNode = $null
+					foreach ($child in $paramEl.ChildNodes) {
+						if ($child.NodeType -eq 'Element' -and $child.LocalName -in @('expression','availableAsField','availableValue','denyIncompleteValues','use')) { $refNode = $child; break }
+					}
+					$nodes = Import-Fragment $xmlDoc "$childIndent<useRestriction>true</useRestriction>"
+					foreach ($node in $nodes) { Insert-BeforeElement $paramEl $node $refNode $childIndent }
+				}
+
+				# availableAsField → false (insert after <expression>, before <availableValue>/<denyIncompleteValues>/<use>)
+				$afEl = $null
+				foreach ($ch in $paramEl.ChildNodes) {
+					if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'availableAsField' -and $ch.NamespaceURI -eq $schNs) { $afEl = $ch; break }
+				}
+				if ($afEl) {
+					if ($afEl.InnerText.Trim() -ne 'false') { $afEl.InnerText = 'false' }
+				} else {
+					$refNode = $null
+					foreach ($child in $paramEl.ChildNodes) {
+						if ($child.NodeType -eq 'Element' -and $child.LocalName -in @('availableValue','denyIncompleteValues','use')) { $refNode = $child; break }
+					}
+					$nodes = Import-Fragment $xmlDoc "$childIndent<availableAsField>false</availableAsField>"
+					foreach ($node in $nodes) { Insert-BeforeElement $paramEl $node $refNode $childIndent }
+				}
+
+				Write-Host "[OK] Parameter `"$paramName`": @hidden applied"
+			}
+
+			if ($flagAlways) {
+				$useEl = $null
+				foreach ($ch in $paramEl.ChildNodes) {
+					if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'use' -and $ch.NamespaceURI -eq $schNs) { $useEl = $ch; break }
+				}
+				if ($useEl) {
+					if ($useEl.InnerText.Trim() -ne 'Always') { $useEl.InnerText = 'Always' }
+				} else {
+					$nodes = Import-Fragment $xmlDoc "$childIndent<use>Always</use>"
+					foreach ($node in $nodes) { Insert-BeforeElement $paramEl $node $null $childIndent }
+				}
+				Write-Host "[OK] Parameter `"$paramName`": @always applied"
 			}
 		}
 	}
