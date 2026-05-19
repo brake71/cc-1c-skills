@@ -1,4 +1,4 @@
-# skd-edit v1.20 — Atomic 1C DCS editor (Python port)
+# skd-edit v1.21 — Atomic 1C DCS editor (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -214,7 +214,8 @@ def parse_field_shorthand(s):
 
 
 def read_field_properties(field_el):
-    props = {"dataPath": "", "field": "", "title": "", "type": "", "roles": [], "restrict": [], "_rawTypeText": ""}
+    props = {"dataPath": "", "field": "", "title": "", "type": "", "roles": [], "restrict": [], "_rawTypeText": "",
+             "_rawTitle": None, "_unknownChildren": []}
 
     for ch in field_el:
         if not isinstance(ch.tag, str):
@@ -225,17 +226,27 @@ def read_field_properties(field_el):
         elif ln == "field":
             props["field"] = (ch.text or "").strip()
         elif ln == "title":
+            # Preserve full multi-lang title OuterXml; also extract ru content for compat.
+            raw = etree.tostring(ch, encoding="unicode", with_tail=False)
+            raw = re.sub(r' xmlns(?::\w+)?="[^"]*"', "", raw)
+            props["_rawTitle"] = raw
             for item in ch:
                 if isinstance(item.tag, str) and local_name(item) == "item":
+                    lang = None
+                    content = None
                     for gc in item:
+                        if isinstance(gc.tag, str) and local_name(gc) == "lang":
+                            lang = (gc.text or "").strip()
                         if isinstance(gc.tag, str) and local_name(gc) == "content":
-                            props["title"] = (gc.text or "").strip()
+                            content = (gc.text or "").strip()
+                    if lang == "ru" and content is not None:
+                        props["title"] = content
         elif ln == "valueType":
             # Preserve full <valueType> serialization so rebuild can re-emit qualifiers
             # (StringQualifiers, NumberQualifiers, DateQualifiers, …) that aren't
             # expressible via shorthand. Strip xmlns declarations that lxml re-emits when
             # serializing a sub-element (parent context already provides them).
-            raw = etree.tostring(ch, encoding="unicode")
+            raw = etree.tostring(ch, encoding="unicode", with_tail=False)
             raw = re.sub(r' xmlns(?::\w+)?="[^"]*"', "", raw)
             props["_rawValueType"] = raw
             for gc in ch:
@@ -257,6 +268,12 @@ def read_field_properties(field_el):
                     mapped = rev_map.get(local_name(gc))
                     if mapped:
                         props["restrict"].append(mapped)
+        else:
+            # Defense in depth: preserve OuterXml of unknown children so rebuild
+            # doesn't silently drop them (custom <editFormat>, <appearance>, etc.).
+            raw = etree.tostring(ch, encoding="unicode", with_tail=False)
+            raw = re.sub(r' xmlns(?::\w+)?="[^"]*"', "", raw)
+            props["_unknownChildren"].append(raw)
     return props
 
 
@@ -751,6 +768,19 @@ def build_mltext_xml(tag, text, indent):
     return "\n".join(lines)
 
 
+def patch_mltext_ru(raw_outer_xml, new_ru_text, indent):
+    """Patch the ru <v8:content> within an existing multi-lang title OuterXml,
+    preserving en/uk/etc. siblings. Mirrors PS Patch-MLTextRu."""
+    escaped = esc_xml(new_ru_text)
+    ru_item_pat = r"(<v8:item>\s*<v8:lang>ru</v8:lang>\s*<v8:content>)[^<]*(</v8:content>\s*</v8:item>)"
+    if re.search(ru_item_pat, raw_outer_xml):
+        return re.sub(ru_item_pat, lambda m: m.group(1) + escaped + m.group(2), raw_outer_xml)
+    prep = f"{indent}\t<v8:item>\n{indent}\t\t<v8:lang>ru</v8:lang>\n{indent}\t\t<v8:content>{escaped}</v8:content>\n{indent}\t</v8:item>"
+    if "<v8:item>" in raw_outer_xml:
+        return re.sub(r"(\s*)<v8:item>", lambda m: "\n" + prep + m.group(1) + "<v8:item>", raw_outer_xml, count=1)
+    return re.sub(r"(<(?:\w+:)?title[^>]*>)", lambda m: m.group(1) + "\n" + prep + "\n" + indent, raw_outer_xml, count=1)
+
+
 def build_role_xml(roles, indent):
     if not roles:
         return ""
@@ -784,7 +814,15 @@ def build_field_fragment(parsed, indent):
     lines.append(f"{i}\t<dataPath>{esc_xml(parsed['dataPath'])}</dataPath>")
     lines.append(f"{i}\t<field>{esc_xml(parsed['field'])}</field>")
 
-    if parsed.get("title"):
+    # Title: prefer raw multi-lang OuterXml (preserves en/uk/etc.). When shorthand
+    # provides a new ru text different from existing, patch the ru content. Otherwise
+    # emit raw as-is or build ru-only from shorthand if there was no prior title.
+    if parsed.get("_rawTitle"):
+        if parsed.get("title") and parsed["title"] != parsed.get("_existingTitleRu"):
+            lines.append(f"{i}\t" + patch_mltext_ru(parsed["_rawTitle"], parsed["title"], f"{i}\t"))
+        else:
+            lines.append(f"{i}\t" + parsed["_rawTitle"])
+    elif parsed.get("title"):
         lines.append(build_mltext_xml("title", parsed["title"], f"{i}\t"))
 
     if parsed.get("restrict"):
@@ -802,6 +840,10 @@ def build_field_fragment(parsed, indent):
         lines.append(f"{i}\t<valueType>")
         lines.append(build_value_type_xml(parsed["type"], f"{i}\t\t"))
         lines.append(f"{i}\t</valueType>")
+
+    # Defense in depth: re-emit OuterXml of unknown children captured by Read.
+    for raw in (parsed.get("_unknownChildren") or []):
+        lines.append(f"{i}\t" + raw)
 
     lines.append(f"{i}</field>")
     return "\n".join(lines)
@@ -1720,11 +1762,19 @@ elif operation == "modify-parameter":
         # Set/replace title (must come right after <name>, before <valueType>)
         if title_val is not None:
             existing_title = next((ch for ch in param_el if isinstance(ch.tag, str) and local_name(ch) == "title"), None)
+            # If existing title is multi-lang (has >1 <v8:item>), patch ru content
+            # while preserving other languages. Otherwise rebuild as ru-only.
+            title_frag = None
             if existing_title is not None:
+                raw_title = etree.tostring(existing_title, encoding="unicode", with_tail=False)
+                raw_title = re.sub(r' xmlns(?::\w+)?="[^"]*"', "", raw_title)
+                if raw_title.count("<v8:item>") > 1:
+                    title_frag = child_indent + patch_mltext_ru(raw_title, title_val, child_indent)
                 remove_node_with_whitespace(existing_title)
+            if title_frag is None:
+                title_frag = build_mltext_xml("title", title_val, child_indent)
             # Insert before the first child after <name>
             title_ref = next((ch for ch in param_el if isinstance(ch.tag, str) and local_name(ch) != "name"), None)
-            title_frag = build_mltext_xml("title", title_val, child_indent)
             for node in import_fragment(xml_doc, title_frag):
                 insert_before_element(param_el, node, title_ref, child_indent)
             dirty = True; print(f'[OK] Parameter "{param_name}": title set to "{title_val}"')
@@ -2548,6 +2598,11 @@ elif operation == "modify-field":
             "restrict": parsed["restrict"] if parsed.get("restrict") else existing["restrict"],
             # Preserve raw <valueType> only when user did NOT override type via shorthand.
             "rawValueType": None if parsed.get("type") else existing.get("_rawValueType"),
+            # Preserve raw multi-lang title; pass existing ru content for change detection.
+            "_rawTitle": existing.get("_rawTitle"),
+            "_existingTitleRu": existing.get("title"),
+            # Pass-through unknown children (e.g. <editFormat>, <appearance>, custom extensions).
+            "_unknownChildren": existing.get("_unknownChildren"),
         }
 
         # Find next element sibling for position
@@ -2600,9 +2655,25 @@ elif operation == "set-field-role":
 
         field_indent = get_child_indent(field_el)
 
-        # Remove existing <role>
+        # Remove existing <role> — but first capture OuterXml of sub-children that the
+        # rebuild won't re-emit (custom <dcscom:groupFields>, <dcscom:addition>, etc.).
         old_role = next((ch for ch in field_el if isinstance(ch.tag, str) and local_name(ch) == "role" and etree.QName(ch.tag).namespace == SCH_NS), None)
+        known_role_children = {"periodNumber", "periodType", "dimension", "ignoreNullsInGroups",
+                               "balance", "account", "accountTypeExpression", "additionType", "addition"}
+        kv_keys = {k for k, _ in kv}
+        preserved_role_children = []
         if old_role is not None:
+            for gc in old_role:
+                if not isinstance(gc.tag, str):
+                    continue
+                ln = local_name(gc)
+                if ln in known_role_children:
+                    continue
+                if ln in kv_keys:
+                    continue
+                raw = etree.tostring(gc, encoding="unicode", with_tail=False)
+                raw = re.sub(r' xmlns(?::\w+)?="[^"]*"', "", raw)
+                preserved_role_children.append(raw)
             remove_node_with_whitespace(old_role)
 
         # Empty spec — remove only
@@ -2620,6 +2691,8 @@ elif operation == "set-field-role":
                 lines.append(f"{field_indent}\t<dcscom:{flag}>true</dcscom:{flag}>")
         for k, v in kv:
             lines.append(f"{field_indent}\t<dcscom:{k}>{esc_xml(v)}</dcscom:{k}>")
+        for raw in preserved_role_children:
+            lines.append(f"{field_indent}\t" + raw)
         lines.append(f"{field_indent}</role>")
         frag_xml = "\n".join(lines)
 

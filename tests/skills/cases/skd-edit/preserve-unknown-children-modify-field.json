@@ -1,0 +1,10 @@
+{
+  "name": "modify-field сохраняет неизвестные дочерние элементы (editFormat, appearance и т.п.)",
+  "setup": "fixture:multilang-base",
+  "params": {
+    "templatePath": "Template.xml",
+    "operation": "modify-field",
+    "value": "Контрагент @ignoreNullsInGroups"
+  },
+  "idempotent": true
+}

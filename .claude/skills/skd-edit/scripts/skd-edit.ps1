@@ -1,4 +1,4 @@
-﻿# skd-edit v1.20 — Atomic 1C DCS editor
+﻿# skd-edit v1.21 — Atomic 1C DCS editor
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -183,6 +183,8 @@ function Read-FieldProperties($fieldEl) {
 	$props = @{
 		dataPath = ""; field = ""; title = ""; type = ""
 		roles = @(); restrict = @()
+		_rawTitle = $null
+		_unknownChildren = @()
 	}
 
 	foreach ($ch in $fieldEl.ChildNodes) {
@@ -191,14 +193,22 @@ function Read-FieldProperties($fieldEl) {
 			"dataPath" { $props.dataPath = $ch.InnerText.Trim() }
 			"field" { $props.field = $ch.InnerText.Trim() }
 			"title" {
-				# Extract text from LocalStringType
+				# Preserve full multi-lang title OuterXml — used to keep en/uk/etc.
+				# siblings when shorthand overrides only the ru content. Strip xmlns
+				# redeclarations that OuterXml adds for sub-elements.
+				$raw = $ch.OuterXml
+				$raw = [regex]::Replace($raw, ' xmlns(?::\w+)?="[^"]*"', '')
+				$props._rawTitle = $raw
+				# Also extract ru content as plain string (backward compat — used by
+				# external consumers reading $existing.title).
 				foreach ($item in $ch.ChildNodes) {
 					if ($item.NodeType -eq 'Element' -and $item.LocalName -eq 'item') {
+						$lang = $null; $content = $null
 						foreach ($gc in $item.ChildNodes) {
-							if ($gc.NodeType -eq 'Element' -and $gc.LocalName -eq 'content') {
-								$props.title = $gc.InnerText.Trim()
-							}
+							if ($gc.NodeType -eq 'Element' -and $gc.LocalName -eq 'lang') { $lang = $gc.InnerText.Trim() }
+							if ($gc.NodeType -eq 'Element' -and $gc.LocalName -eq 'content') { $content = $gc.InnerText.Trim() }
 						}
+						if ($lang -eq 'ru' -and $null -ne $content) { $props.title = $content }
 					}
 				}
 			}
@@ -241,6 +251,13 @@ function Read-FieldProperties($fieldEl) {
 						if ($mapped) { $props.restrict += $mapped }
 					}
 				}
+			}
+			default {
+				# Defense in depth: preserve OuterXml of unknown children so rebuild
+				# doesn't silently drop them (custom <editFormat>, <appearance>, etc.).
+				$raw = $ch.OuterXml
+				$raw = [regex]::Replace($raw, ' xmlns(?::\w+)?="[^"]*"', '')
+				$props._unknownChildren += $raw
 			}
 		}
 	}
@@ -804,6 +821,28 @@ function Build-MLTextXml {
 	return $lines -join "`n"
 }
 
+# Patches the ru <v8:content> within an existing multi-lang title OuterXml, preserving
+# en/uk/etc. siblings. Used when modify-* operates with a title-override shorthand on a
+# field/parameter that already has multi-language titles (typical in ERP/БП/ЗУП).
+# If no ru item exists, one is prepended before the first existing item.
+function Patch-MLTextRu {
+	param([string]$rawOuterXml, [string]$newRuText, [string]$indent)
+	$escaped = Esc-Xml $newRuText
+	$ruItemPat = '(<v8:item>\s*<v8:lang>ru</v8:lang>\s*<v8:content>)[^<]*(</v8:content>\s*</v8:item>)'
+	if ([regex]::IsMatch($rawOuterXml, $ruItemPat)) {
+		return [regex]::Replace($rawOuterXml, $ruItemPat, { param($m) $m.Groups[1].Value + $escaped + $m.Groups[2].Value })
+	}
+	# No ru item — prepend one inside the title element, before first <v8:item>.
+	$prep = "$indent`t<v8:item>`n$indent`t`t<v8:lang>ru</v8:lang>`n$indent`t`t<v8:content>$escaped</v8:content>`n$indent`t</v8:item>"
+	if ($rawOuterXml -match '<v8:item>') {
+		$re = New-Object System.Text.RegularExpressions.Regex('(\s*)<v8:item>')
+		return $re.Replace($rawOuterXml, "`n$prep`$1<v8:item>", 1)
+	}
+	# Empty title — inject after opening tag.
+	$re2 = New-Object System.Text.RegularExpressions.Regex('(<(?:\w+:)?title[^>]*>)')
+	return $re2.Replace($rawOuterXml, "`$1`n$prep`n$indent", 1)
+}
+
 function Build-RoleXml {
 	param([string[]]$roles, [string]$indent)
 
@@ -854,7 +893,16 @@ function Build-FieldFragment {
 	$lines += "$i`t<dataPath>$(Esc-Xml $parsed.dataPath)</dataPath>"
 	$lines += "$i`t<field>$(Esc-Xml $parsed.field)</field>"
 
-	if ($parsed.title) {
+	# Title: prefer raw multi-lang title (preserves en/uk/etc.). When shorthand provides
+	# a new ru text, patch ru content inside the raw title; otherwise emit raw as-is.
+	# When no raw title exists, fall back to ru-only build from shorthand.
+	if ($parsed._rawTitle) {
+		if ($parsed.title -and $parsed.title -ne $parsed._existingTitleRu) {
+			$lines += "$i`t" + (Patch-MLTextRu $parsed._rawTitle $parsed.title "$i`t")
+		} else {
+			$lines += "$i`t" + $parsed._rawTitle
+		}
+	} elseif ($parsed.title) {
 		$lines += (Build-MLTextXml -tag "title" -text $parsed.title -indent "$i`t")
 	}
 
@@ -873,6 +921,14 @@ function Build-FieldFragment {
 		$lines += "$i`t<valueType>"
 		$lines += (Build-ValueTypeXml -typeStr $parsed.type -indent "$i`t`t")
 		$lines += "$i`t</valueType>"
+	}
+
+	# Defense in depth: re-emit OuterXml of unknown children (e.g. <editFormat>,
+	# <appearance>, custom extensions) that Read-FieldProperties captured.
+	if ($parsed._unknownChildren) {
+		foreach ($raw in $parsed._unknownChildren) {
+			$lines += "$i`t" + $raw
+		}
 	}
 
 	$lines += "$i</field>"
@@ -1981,8 +2037,22 @@ switch ($Operation) {
 						$existingTitle = $ch; break
 					}
 				}
+				# If the existing title has multiple <v8:item> (multi-language: ru + en + …),
+				# patch only the ru <v8:content> via raw-string surgery to preserve other langs.
+				# Otherwise rebuild as ru-only fragment.
+				$titleFrag = $null
 				if ($existingTitle) {
+					$rawTitle = $existingTitle.OuterXml
+					$rawTitle = [regex]::Replace($rawTitle, ' xmlns(?::\w+)?="[^"]*"', '')
+					# Count <v8:item> occurrences — if >1, treat as multi-lang.
+					$itemCount = ([regex]::Matches($rawTitle, '<v8:item>')).Count
+					if ($itemCount -gt 1) {
+						$titleFrag = $childIndent + (Patch-MLTextRu $rawTitle $titleVal $childIndent)
+					}
 					Remove-NodeWithWhitespace $existingTitle
+				}
+				if (-not $titleFrag) {
+					$titleFrag = Build-MLTextXml -tag "title" -text $titleVal -indent $childIndent
 				}
 				# Insert before first of (valueType, value, useRestriction, expression, availableAsField, ...)
 				$titleRef = $null
@@ -1991,7 +2061,6 @@ switch ($Operation) {
 						$titleRef = $ch; break
 					}
 				}
-				$titleFrag = Build-MLTextXml -tag "title" -text $titleVal -indent $childIndent
 				$titleNodes = Import-Fragment $xmlDoc $titleFrag
 				foreach ($node in $titleNodes) {
 					Insert-BeforeElement $paramEl $node $titleRef $childIndent
@@ -3077,6 +3146,11 @@ switch ($Operation) {
 				# Preserve raw <valueType> only when user did NOT override type via shorthand —
 				# otherwise the override path rebuilds valueType from $parsed.type.
 				rawValueType = if ($parsed.type) { $null } else { $existing._rawValueType }
+				# Preserve raw multi-lang title; pass existing ru content for change detection.
+				_rawTitle = $existing._rawTitle
+				_existingTitleRu = $existing.title
+				# Pass-through unknown children (e.g. <editFormat>, <appearance>, custom extensions).
+				_unknownChildren = $existing._unknownChildren
 			}
 
 			# Remember position (NextSibling after whitespace)
@@ -3136,12 +3210,28 @@ switch ($Operation) {
 
 			$fieldIndent = Get-ChildIndent $fieldEl
 
-			# Remove existing <role>
+			# Remove existing <role> — but first capture OuterXml of any sub-children that
+			# Build-RoleXml won't re-emit (e.g. <dcscom:addition>, <dcscom:groupFields>,
+			# custom extension elements). Preserved across rebuild.
 			$oldRole = $null
 			foreach ($ch in $fieldEl.ChildNodes) {
 				if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'role' -and $ch.NamespaceURI -eq $schNs) { $oldRole = $ch; break }
 			}
-			if ($oldRole) { Remove-NodeWithWhitespace $oldRole }
+			$knownRoleChildren = @('periodNumber','periodType','dimension','ignoreNullsInGroups','balance','account','accountTypeExpression','additionType','addition')
+			$preservedRoleChildren = @()
+			if ($oldRole) {
+				foreach ($gc in $oldRole.ChildNodes) {
+					if ($gc.NodeType -ne 'Element') { continue }
+					if ($knownRoleChildren -contains $gc.LocalName) { continue }
+					# kv keys override the same-named sub-element on rebuild — don't preserve
+					# what the user explicitly set.
+					if ($kv.Contains($gc.LocalName)) { continue }
+					$raw = $gc.OuterXml
+					$raw = [regex]::Replace($raw, ' xmlns(?::\w+)?="[^"]*"', '')
+					$preservedRoleChildren += $raw
+				}
+				Remove-NodeWithWhitespace $oldRole
+			}
 
 			# Empty spec — remove only
 			if ($flags.Count -eq 0 -and $kv.Count -eq 0) {
@@ -3162,6 +3252,9 @@ switch ($Operation) {
 			}
 			foreach ($k in $kv.Keys) {
 				$lines += "$fieldIndent`t<dcscom:$k>$(Esc-Xml $kv[$k])</dcscom:$k>"
+			}
+			foreach ($raw in $preservedRoleChildren) {
+				$lines += "$fieldIndent`t" + $raw
 			}
 			$lines += "$fieldIndent</role>"
 			$fragXml = $lines -join "`n"
