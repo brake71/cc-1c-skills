@@ -147,6 +147,8 @@ Shorthand: `"Имя [Заголовок]: тип = значение @флаги"
 
 Объектная форма: `title`, `hidden: true`, `valueListAllowed: true`, `availableAsField: false`, `denyIncompleteValues: true`, `use: "Always"`.
 
+Если значения по умолчанию нет — пропусти `=` в shorthand или укажи `"value": null` в объектной форме.
+
 Список допустимых значений (availableValues):
 
 ```json

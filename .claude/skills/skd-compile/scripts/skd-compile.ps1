@@ -1,4 +1,4 @@
-﻿# skd-compile v1.23 — Compile 1C DCS from JSON
+﻿# skd-compile v1.24 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -375,8 +375,8 @@ function Parse-ParamShorthand {
 		$s = ($s -replace '\s*\[[^\]]*\]\s*', ' ').Trim()
 	}
 
-	# Split "Name: Type = Value"
-	if ($s -match '^([^:]+):\s*(\S+)(\s*=\s*(.+))?$') {
+	# Split "Name: Type = Value" — RHS may be empty (`= ` / `=`) → treated as empty value
+	if ($s -match '^([^:]+):\s*(\S+)(\s*=\s*(.*))?$') {
 		$result.name = $Matches[1].Trim()
 		$result.type = Resolve-TypeStr ($Matches[2].Trim())
 		if ($Matches[4]) {
@@ -985,8 +985,9 @@ function Emit-SingleParam {
 		X "`t`t</valueType>"
 	}
 
-	# Value
-	Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t"
+	# Value — for valueListAllowed params Designer omits <value> when empty
+	$vla = [bool]$parsed.valueListAllowed
+	Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t" -valueListAllowed $vla
 
 	# Hidden implies useRestriction=true + availableAsField=false
 	if ($parsed.hidden -eq $true) {
@@ -1017,13 +1018,17 @@ function Emit-SingleParam {
 	# AvailableValues
 	if ($p -isnot [string] -and $p.availableValues) {
 		foreach ($av in $p.availableValues) {
-			$avVal = "$($av.value)"
-			$avType = "xs:string"
-			if ($avVal -match '^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета)\.') {
-				$avType = "dcscor:DesignTimeValue"
-			}
 			X "`t`t<availableValue>"
-			X "`t`t`t<value xsi:type=`"$avType`">$(Esc-Xml $avVal)</value>"
+			if (Test-EmptyValue $av.value) {
+				Emit-EmptyValue -type $parsed.type -indent "`t`t`t" -tagPrefix "" -valueListAllowed $false
+			} else {
+				$avVal = "$($av.value)"
+				$avType = "xs:string"
+				if ($avVal -match '^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета)\.') {
+					$avType = "dcscor:DesignTimeValue"
+				}
+				X "`t`t`t<value xsi:type=`"$avType`">$(Esc-Xml $avVal)</value>"
+			}
 			# `title` accepted as synonym of `presentation` — both map to the same UI label.
 			$avPres = if ($av.presentation) { $av.presentation } elseif ($av.title) { $av.title } else { "" }
 			if ($avPres) {
@@ -1107,10 +1112,52 @@ function Emit-Parameters {
 	}
 }
 
-function Emit-ParamValue {
-	param([string]$type, $val, [string]$indent)
+function Test-EmptyValue {
+	param($v)
+	if ($null -eq $v) { return $true }
+	$s = "$v".Trim()
+	if ($s -eq "") { return $true }
+	if ($s -eq "_") { return $true }
+	if ($s.ToLowerInvariant() -eq "null") { return $true }
+	return $false
+}
 
-	if ($null -eq $val) { return }
+function Emit-EmptyValue {
+	param([string]$type, [string]$indent, [string]$tagPrefix = "", [bool]$valueListAllowed = $false)
+
+	if ($valueListAllowed) { return }
+	$t = if ($null -eq $type) { "" } else { "$type" }
+	$pf = $tagPrefix
+
+	if ($t -eq "") {
+		X "$indent<${pf}value xsi:nil=`"true`"/>"
+	} elseif ($t -eq "StandardPeriod") {
+		X "$indent<${pf}value xsi:type=`"v8:StandardPeriod`">"
+		X "$indent`t<v8:variant xsi:type=`"v8:StandardPeriodVariant`">Custom</v8:variant>"
+		X "$indent`t<v8:startDate>0001-01-01T00:00:00</v8:startDate>"
+		X "$indent`t<v8:endDate>0001-01-01T00:00:00</v8:endDate>"
+		X "$indent</${pf}value>"
+	} elseif ($t -match '^string') {
+		X "$indent<${pf}value xsi:type=`"xs:string`"/>"
+	} elseif ($t -match '^date') {
+		X "$indent<${pf}value xsi:type=`"xs:dateTime`">0001-01-01T00:00:00</${pf}value>"
+	} elseif ($t -match '^decimal') {
+		X "$indent<${pf}value xsi:type=`"xs:decimal`">0</${pf}value>"
+	} elseif ($t -eq "boolean") {
+		X "$indent<${pf}value xsi:type=`"xs:boolean`">false</${pf}value>"
+	} else {
+		# Ref types or unknown — safe nil
+		X "$indent<${pf}value xsi:nil=`"true`"/>"
+	}
+}
+
+function Emit-ParamValue {
+	param([string]$type, $val, [string]$indent, [bool]$valueListAllowed = $false)
+
+	if (Test-EmptyValue $val) {
+		Emit-EmptyValue -type $type -indent $indent -tagPrefix "" -valueListAllowed $valueListAllowed
+		return
+	}
 
 	$valStr = "$val"
 
@@ -1868,6 +1915,8 @@ function Emit-DataParameters {
 		# Value
 		if ($dp.nilValue -eq $true) {
 			X "$indent`t`t<dcscor:value xsi:nil=`"true`"/>"
+		} elseif (Test-EmptyValue $dp.value) {
+			Emit-EmptyValue -type "$($dp.valueType)" -indent "$indent`t`t" -tagPrefix "dcscor:" -valueListAllowed $false
 		} elseif ($null -ne $dp.value) {
 			$vtype = "$($dp.valueType)"
 			if ($dp.value -is [PSCustomObject] -and $dp.value.variant) {
@@ -2206,7 +2255,7 @@ function Emit-SettingsVariants {
 					}
 					$dpItem | Add-Member -NotePropertyName "value" -NotePropertyValue @{ variant = $variant }
 					if ($variant -ne 'Custom') { $hasMeaningfulValue = $true }
-				} elseif ($null -ne $ap.value -and "$($ap.value)" -ne '') {
+				} elseif (-not (Test-EmptyValue $ap.value)) {
 					$dpItem | Add-Member -NotePropertyName "value" -NotePropertyValue $ap.value
 					$dpItem | Add-Member -NotePropertyName "valueType" -NotePropertyValue "$($ap.type)"
 					$hasMeaningfulValue = $true

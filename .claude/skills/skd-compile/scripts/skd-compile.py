@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.23 — Compile 1C DCS from JSON
+# skd-compile v1.24 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -282,8 +282,8 @@ def parse_param_shorthand(s):
         result['title'] = m.group(1).strip()
         s = re.sub(r'\s*\[[^\]]*\]\s*', ' ', s).strip()
 
-    # Split "Name: Type = Value"
-    m = re.match(r'^([^:]+):\s*(\S+)(\s*=\s*(.+))?$', s)
+    # Split "Name: Type = Value" — RHS may be empty (`= ` / `=`) → treated as empty value
+    m = re.match(r'^([^:]+):\s*(\S+)(\s*=\s*(.*))?$', s)
     if m:
         result['name'] = m.group(1).strip()
         result['type'] = resolve_type_str(m.group(2).strip())
@@ -790,8 +790,49 @@ def emit_total_fields(lines, defn):
 
 # === Parameters ===
 
-def emit_param_value(lines, type_str, val, indent):
-    if val is None:
+def is_empty_value(v):
+    if v is None:
+        return True
+    s = str(v).strip()
+    if s == '':
+        return True
+    if s == '_':
+        return True
+    if s.lower() == 'null':
+        return True
+    return False
+
+
+def emit_empty_value(lines, type_str, indent, tag_prefix='', value_list_allowed=False):
+    if value_list_allowed:
+        return
+    t = type_str or ''
+    pf = tag_prefix
+
+    if t == '':
+        lines.append(f'{indent}<{pf}value xsi:nil="true"/>')
+    elif t == 'StandardPeriod':
+        lines.append(f'{indent}<{pf}value xsi:type="v8:StandardPeriod">')
+        lines.append(f'{indent}\t<v8:variant xsi:type="v8:StandardPeriodVariant">Custom</v8:variant>')
+        lines.append(f'{indent}\t<v8:startDate>0001-01-01T00:00:00</v8:startDate>')
+        lines.append(f'{indent}\t<v8:endDate>0001-01-01T00:00:00</v8:endDate>')
+        lines.append(f'{indent}</{pf}value>')
+    elif re.match(r'^string', t):
+        lines.append(f'{indent}<{pf}value xsi:type="xs:string"/>')
+    elif re.match(r'^date', t):
+        lines.append(f'{indent}<{pf}value xsi:type="xs:dateTime">0001-01-01T00:00:00</{pf}value>')
+    elif re.match(r'^decimal', t):
+        lines.append(f'{indent}<{pf}value xsi:type="xs:decimal">0</{pf}value>')
+    elif t == 'boolean':
+        lines.append(f'{indent}<{pf}value xsi:type="xs:boolean">false</{pf}value>')
+    else:
+        # Ref types or unknown — safe nil
+        lines.append(f'{indent}<{pf}value xsi:nil="true"/>')
+
+
+def emit_param_value(lines, type_str, val, indent, value_list_allowed=False):
+    if is_empty_value(val):
+        emit_empty_value(lines, type_str, indent, '', value_list_allowed)
         return
 
     val_str = str(val)
@@ -847,8 +888,9 @@ def emit_single_param(lines, p, parsed):
         emit_value_type(lines, parsed['type'], '\t\t\t')
         lines.append('\t\t</valueType>')
 
-    # Value
-    emit_param_value(lines, parsed.get('type', ''), parsed.get('value'), '\t\t')
+    # Value — for valueListAllowed params Designer omits <value> when empty
+    vla = bool(parsed.get('valueListAllowed'))
+    emit_param_value(lines, parsed.get('type', ''), parsed.get('value'), '\t\t', vla)
 
     # Hidden implies useRestriction=true + availableAsField=false
     if parsed.get('hidden') is True:
@@ -876,12 +918,15 @@ def emit_single_param(lines, p, parsed):
     # AvailableValues
     if p is not None and not isinstance(p, str) and p.get('availableValues'):
         for av in p['availableValues']:
-            av_val = str(av.get('value', ''))
-            av_type = 'xs:string'
-            if re.match(r'^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета)\.', av_val):
-                av_type = 'dcscor:DesignTimeValue'
             lines.append('\t\t<availableValue>')
-            lines.append(f'\t\t\t<value xsi:type="{av_type}">{esc_xml(av_val)}</value>')
+            if is_empty_value(av.get('value')):
+                emit_empty_value(lines, parsed.get('type', ''), '\t\t\t', '', False)
+            else:
+                av_val = str(av.get('value', ''))
+                av_type = 'xs:string'
+                if re.match(r'^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета)\.', av_val):
+                    av_type = 'dcscor:DesignTimeValue'
+                lines.append(f'\t\t\t<value xsi:type="{av_type}">{esc_xml(av_val)}</value>')
             # `title` accepted as synonym of `presentation` — both map to the same UI label.
             av_pres = av.get('presentation') or av.get('title') or ''
             if av_pres:
@@ -1585,6 +1630,8 @@ def emit_data_parameters(lines, items, indent):
         # Value
         if dp.get('nilValue') is True:
             lines.append(f'{indent}\t\t<dcscor:value xsi:nil="true"/>')
+        elif is_empty_value(dp.get('value')):
+            emit_empty_value(lines, str(dp.get('valueType') or ''), f'{indent}\t\t', 'dcscor:', False)
         elif dp.get('value') is not None:
             val = dp['value']
             vtype = str(dp.get('valueType') or '')
@@ -1853,7 +1900,7 @@ def emit_settings_variants(lines, defn):
                     item['value'] = {'variant': variant}
                     if variant != 'Custom':
                         has_meaningful_value = True
-                elif ap.get('value') is not None and str(ap.get('value')) != '':
+                elif not is_empty_value(ap.get('value')):
                     item['value'] = ap['value']
                     item['valueType'] = str(ap.get('type') or '')
                     has_meaningful_value = True
