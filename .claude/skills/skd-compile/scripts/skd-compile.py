@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.29 — Compile 1C DCS from JSON
+# skd-compile v1.30 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -549,6 +549,58 @@ def emit_data_sources(lines, data_sources):
 
 # === Fields ===
 
+def emit_input_parameters(lines, ip, indent):
+    if not ip:
+        return
+    items = list(ip)
+    if len(items) == 0:
+        return
+    lines.append(f'{indent}<inputParameters>')
+    for item in items:
+        lines.append(f'{indent}\t<dcscor:item>')
+        if 'use' in item and item['use'] is False:
+            lines.append(f'{indent}\t\t<dcscor:use>false</dcscor:use>')
+        lines.append(f'{indent}\t\t<dcscor:parameter>{esc_xml(str(item.get("parameter", "")))}</dcscor:parameter>')
+        if 'choiceParameters' in item:
+            cp_items = list(item['choiceParameters']) if item['choiceParameters'] else []
+            if len(cp_items) == 0:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameters"/>')
+            else:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameters">')
+                for cp in cp_items:
+                    lines.append(f'{indent}\t\t\t<dcscor:item>')
+                    lines.append(f'{indent}\t\t\t\t<dcscor:choiceParameter>{esc_xml(str(cp.get("name", "")))}</dcscor:choiceParameter>')
+                    for v in cp.get('values', []) or []:
+                        lines.append(f'{indent}\t\t\t\t<dcscor:value xsi:type="dcscor:DesignTimeValue">{esc_xml(str(v))}</dcscor:value>')
+                    lines.append(f'{indent}\t\t\t</dcscor:item>')
+                lines.append(f'{indent}\t\t</dcscor:value>')
+        elif 'choiceParameterLinks' in item:
+            cpl_items = list(item['choiceParameterLinks']) if item['choiceParameterLinks'] else []
+            if len(cpl_items) == 0:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameterLinks"/>')
+            else:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameterLinks">')
+                for cpl in cpl_items:
+                    lines.append(f'{indent}\t\t\t<dcscor:item>')
+                    lines.append(f'{indent}\t\t\t\t<dcscor:choiceParameter>{esc_xml(str(cpl.get("name", "")))}</dcscor:choiceParameter>')
+                    lines.append(f'{indent}\t\t\t\t<dcscor:value>{esc_xml(str(cpl.get("value", "")))}</dcscor:value>')
+                    mode = cpl.get('mode') or 'Auto'
+                    lines.append(f'{indent}\t\t\t\t<dcscor:mode xmlns:d8p1="http://v8.1c.ru/8.1/data/enterprise" xsi:type="d8p1:LinkedValueChangeMode">{mode}</dcscor:mode>')
+                    lines.append(f'{indent}\t\t\t</dcscor:item>')
+                lines.append(f'{indent}\t\t</dcscor:value>')
+        elif 'value' in item:
+            val = item['value']
+            if isinstance(val, bool):
+                vstr = 'true' if val else 'false'
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:boolean">{vstr}</dcscor:value>')
+            elif isinstance(val, (int, float)):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:decimal">{val}</dcscor:value>')
+            else:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:string">{esc_xml(str(val))}</dcscor:value>')
+        lines.append(f'{indent}\t</dcscor:item>')
+    lines.append(f'{indent}</inputParameters>')
+
+
 def emit_field(lines, field_def, indent):
     if isinstance(field_def, str):
         f = parse_field_shorthand(field_def)
@@ -587,6 +639,9 @@ def emit_field(lines, field_def, indent):
         # orderExpression — {expression, orderType, autoOrder}
         if field_def.get('orderExpression'):
             f['orderExpression'] = field_def['orderExpression']
+        # inputParameters — массив элементов, типизированных по форме value
+        if field_def.get('inputParameters') is not None:
+            f['inputParameters'] = field_def['inputParameters']
 
     lines.append(f'{indent}<field xsi:type="DataSetFieldField">')
     lines.append(f'{indent}\t<dataPath>{esc_xml(f["dataPath"])}</dataPath>')
@@ -671,6 +726,10 @@ def emit_field(lines, field_def, indent):
     # PresentationExpression
     if f.get('presentationExpression'):
         lines.append(f'{indent}\t<presentationExpression>{esc_xml(f["presentationExpression"])}</presentationExpression>')
+
+    # InputParameters — в конце field
+    if f.get('inputParameters'):
+        emit_input_parameters(lines, f['inputParameters'], f'{indent}\t')
 
     lines.append(f'{indent}</field>')
 

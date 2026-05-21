@@ -1,4 +1,4 @@
-﻿# skd-compile v1.29 — Compile 1C DCS from JSON
+﻿# skd-compile v1.30 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -722,6 +722,79 @@ function Emit-DataSources {
 }
 
 # === Fields ===
+function Has-JsonProp {
+	param($obj, [string]$name)
+	if ($null -eq $obj) { return $false }
+	if ($obj.PSObject -and $obj.PSObject.Properties) {
+		return $null -ne $obj.PSObject.Properties[$name]
+	}
+	if ($obj -is [System.Collections.IDictionary]) { return $obj.Contains($name) }
+	return $false
+}
+
+function Emit-InputParameters {
+	param($ip, [string]$indent)
+	if ($null -eq $ip) { return }
+	$items = @($ip)
+	if ($items.Count -eq 0) { return }
+	X "$indent<inputParameters>"
+	foreach ($item in $items) {
+		X "$indent`t<dcscor:item>"
+		if ((Has-JsonProp $item 'use') -and $null -ne $item.use -and -not $item.use) {
+			X "$indent`t`t<dcscor:use>false</dcscor:use>"
+		}
+		X "$indent`t`t<dcscor:parameter>$(Esc-Xml "$($item.parameter)")</dcscor:parameter>"
+		if (Has-JsonProp $item 'choiceParameters') {
+			$cp = $item.choiceParameters
+			$cpItems = if ($null -ne $cp) { @($cp) } else { @() }
+			if ($cpItems.Count -eq 0) {
+				X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameters`"/>"
+			} else {
+				X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameters`">"
+				foreach ($cpItem in $cpItems) {
+					X "$indent`t`t`t<dcscor:item>"
+					X "$indent`t`t`t`t<dcscor:choiceParameter>$(Esc-Xml "$($cpItem.name)")</dcscor:choiceParameter>"
+					foreach ($v in @($cpItem.values)) {
+						X "$indent`t`t`t`t<dcscor:value xsi:type=`"dcscor:DesignTimeValue`">$(Esc-Xml "$v")</dcscor:value>"
+					}
+					X "$indent`t`t`t</dcscor:item>"
+				}
+				X "$indent`t`t</dcscor:value>"
+			}
+		} elseif (Has-JsonProp $item 'choiceParameterLinks') {
+			$cpl = $item.choiceParameterLinks
+			$cplItems = if ($null -ne $cpl) { @($cpl) } else { @() }
+			if ($cplItems.Count -eq 0) {
+				X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameterLinks`"/>"
+			} else {
+				X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameterLinks`">"
+				foreach ($cplItem in $cplItems) {
+					X "$indent`t`t`t<dcscor:item>"
+					X "$indent`t`t`t`t<dcscor:choiceParameter>$(Esc-Xml "$($cplItem.name)")</dcscor:choiceParameter>"
+					X "$indent`t`t`t`t<dcscor:value>$(Esc-Xml "$($cplItem.value)")</dcscor:value>"
+					$mode = if ($cplItem.mode) { "$($cplItem.mode)" } else { 'Auto' }
+					X "$indent`t`t`t`t<dcscor:mode xmlns:d8p1=`"http://v8.1c.ru/8.1/data/enterprise`" xsi:type=`"d8p1:LinkedValueChangeMode`">$mode</dcscor:mode>"
+					X "$indent`t`t`t</dcscor:item>"
+				}
+				X "$indent`t`t</dcscor:value>"
+			}
+		} elseif (Has-JsonProp $item 'value') {
+			# Simple typed value — определяем xsi:type из JSON-типа
+			$val = $item.value
+			if ($val -is [bool]) {
+				$vStr = if ($val) { 'true' } else { 'false' }
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:boolean`">$vStr</dcscor:value>"
+			} elseif ($val -is [int] -or $val -is [long] -or $val -is [double] -or $val -is [decimal]) {
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:decimal`">$val</dcscor:value>"
+			} else {
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:string`">$(Esc-Xml "$val")</dcscor:value>"
+			}
+		}
+		X "$indent`t</dcscor:item>"
+	}
+	X "$indent</inputParameters>"
+}
+
 function Emit-Field {
 	param($fieldDef, [string]$indent)
 
@@ -770,6 +843,10 @@ function Emit-Field {
 		# orderExpression — {expression, orderType, autoOrder}
 		if ($fieldDef.orderExpression) {
 			$f["orderExpression"] = $fieldDef.orderExpression
+		}
+		# inputParameters — массив элементов, типизированных по форме value
+		if ($null -ne $fieldDef.inputParameters) {
+			$f["inputParameters"] = $fieldDef.inputParameters
 		}
 	}
 
@@ -873,6 +950,11 @@ function Emit-Field {
 	# PresentationExpression
 	if ($f["presentationExpression"]) {
 		X "$indent`t<presentationExpression>$(Esc-Xml $f["presentationExpression"])</presentationExpression>"
+	}
+
+	# InputParameters — в конце field
+	if ($f["inputParameters"]) {
+		Emit-InputParameters -ip $f["inputParameters"] -indent "$indent`t"
 	}
 
 	X "$indent</field>"

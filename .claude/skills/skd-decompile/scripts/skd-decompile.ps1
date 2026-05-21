@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.11 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.12 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -320,31 +320,67 @@ function Get-AppearanceDict {
 	return $dict
 }
 
-# Check field/parameter inputParameters block for non-empty ChoiceParameters/ChoiceParameterLinks
-# and add warnings (silent-drop visibility — данные действительно теряются, но видно в warnings.md).
-function Check-InputParameters {
-	param($parentNode, [string]$loc)
+# Read <r:inputParameters> → JSON array. Returns $null если отсутствует или пустой.
+function Read-InputParameters {
+	param($parentNode)
 	$ip = $parentNode.SelectSingleNode("r:inputParameters", $ns)
-	if (-not $ip) { return }
+	if (-not $ip) { return $null }
+	$result = @()
 	foreach ($it in $ip.SelectNodes("dcscor:item", $ns)) {
+		$entry = [ordered]@{}
+		$useText = Get-Text $it "dcscor:use"
 		$pName = Get-Text $it "dcscor:parameter"
+		$entry['parameter'] = $pName
+		if ($useText -eq 'false') { $entry['use'] = $false }
 		$val = $it.SelectSingleNode("dcscor:value", $ns)
-		if (-not $val) { continue }
-		$vType = Get-LocalXsiType $val
-		if ($vType -eq 'ChoiceParameters' -or $vType -eq 'ChoiceParameterLinks') {
-			# Empty (no inner items) — silently skip; it's a no-op default.
-			$inner = $val.SelectNodes("dcscor:item", $ns)
-			if ($inner.Count -eq 0) { continue }
-			$null = Add-Warning -kind "SilentDrop:$vType" -loc "$loc/inputParameters/$pName" -detail "Параметр выбора '$pName' ($vType с $($inner.Count) элементами) не воспроизводится в DSL"
+		if ($val) {
+			$vType = Get-LocalXsiType $val
+			if ($vType -eq 'ChoiceParameters') {
+				$cp = @()
+				foreach ($cpItem in $val.SelectNodes("dcscor:item", $ns)) {
+					$cpEntry = [ordered]@{ name = Get-Text $cpItem "dcscor:choiceParameter" }
+					$values = @()
+					foreach ($v in $cpItem.SelectNodes("dcscor:value", $ns)) { $values += $v.InnerText }
+					$cpEntry['values'] = $values
+					$cp += $cpEntry
+				}
+				$entry['choiceParameters'] = $cp
+			} elseif ($vType -eq 'ChoiceParameterLinks') {
+				$cpl = @()
+				foreach ($cplItem in $val.SelectNodes("dcscor:item", $ns)) {
+					$cplEntry = [ordered]@{
+						name = Get-Text $cplItem "dcscor:choiceParameter"
+						value = Get-Text $cplItem "dcscor:value"
+					}
+					$mode = Get-Text $cplItem "dcscor:mode"
+					if ($mode) { $cplEntry['mode'] = $mode }
+					$cpl += $cplEntry
+				}
+				$entry['choiceParameterLinks'] = $cpl
+			} else {
+				# Simple typed value
+				$txt = $val.InnerText
+				if ($vType -eq 'boolean') {
+					$entry['value'] = ($txt -eq 'true')
+				} elseif ($vType -eq 'decimal') {
+					if ($txt -match '^-?\d+$') { $entry['value'] = [int]$txt }
+					else { $entry['value'] = [double]$txt }
+				} else {
+					$entry['value'] = $txt
+				}
+			}
 		}
+		$result += $entry
 	}
+	if ($result.Count -eq 0) { return $null }
+	return ,$result
 }
 
 # Build a field JSON entry (shorthand if possible, object form otherwise)
 function Build-Field {
 	param($fieldNode, [string]$loc)
-	# Silent-drop detection (non-blocking warnings only)
-	Check-InputParameters -parentNode $fieldNode -loc $loc
+	# inputParameters теперь поддерживается в DSL — читается ниже в needsObject
+	$inputParameters = Read-InputParameters -parentNode $fieldNode
 	# orderExpression теперь поддерживается в DSL — читается ниже в needsObject
 	$orderExprNode = $fieldNode.SelectSingleNode("r:orderExpression", $ns)
 	$orderExpression = $null
@@ -376,7 +412,7 @@ function Build-Field {
 
 	# Можно ли роль положить в shorthand-строку?
 	$roleInString = $roleRendered -and $roleRendered.isString
-	$needsObject = $title -or $appearance -or $presExpr -or ($typeShort -is [array]) -or ($roleRendered -and -not $roleInString) -or $orderExpression
+	$needsObject = $title -or $appearance -or $presExpr -or ($typeShort -is [array]) -or ($roleRendered -and -not $roleInString) -or $orderExpression -or $inputParameters
 
 	if (-not $needsObject) {
 		# shorthand: "Name: type @role K=V #restrict"
@@ -405,6 +441,7 @@ function Build-Field {
 	if ($typeShort) { $obj['type'] = $typeShort }
 	if ($roleRendered) { $obj['role'] = $roleRendered.value }
 	if ($orderExpression) { $obj['orderExpression'] = $orderExpression }
+	if ($inputParameters) { $obj['inputParameters'] = $inputParameters }
 	if ($restrictTokens) { $obj['restrict'] = ($restrictTokens | ForEach-Object { $_ -replace '^#','' }) }
 	if ($presExpr) { $obj['presentationExpression'] = $presExpr }
 	if ($appearance) { $obj['appearance'] = $appearance }
@@ -485,8 +522,6 @@ function Get-StandardPeriodVariant {
 # Build parameter → shorthand or object form
 function Build-Parameter {
 	param($pNode, [string]$loc)
-	# Silent-drop detection
-	Check-InputParameters -parentNode $pNode -loc $loc
 	$name = Get-Text $pNode "r:name"
 	$titleNode = $pNode.SelectSingleNode("r:title", $ns)
 	$title = Get-MLText $titleNode
