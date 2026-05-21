@@ -1,4 +1,4 @@
-﻿# skd-compile v1.34 — Compile 1C DCS from JSON
+﻿# skd-compile v1.35 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -848,6 +848,19 @@ function Emit-Field {
 		if ($null -ne $fieldDef.inputParameters) {
 			$f["inputParameters"] = $fieldDef.inputParameters
 		}
+		# folder: true → DataSetFieldFolder (поле-папка для UI-группировки, только dataPath+title)
+		if ($fieldDef.folder -eq $true) {
+			$f["folder"] = $true
+		}
+	}
+
+	# DataSetFieldFolder — только dataPath + title (для UI-группировки полей в композиторе)
+	if ($f["folder"]) {
+		X "$indent<field xsi:type=`"DataSetFieldFolder`">"
+		X "$indent`t<dataPath>$(Esc-Xml $f.dataPath)</dataPath>"
+		if ($f.title) { Emit-MLText -tag "title" -text $f.title -indent "$indent`t" }
+		X "$indent</field>"
+		return
 	}
 
 	X "$indent<field xsi:type=`"DataSetFieldField`">"
@@ -2239,6 +2252,11 @@ function Emit-GroupItems {
 	X "$indent<dcsset:groupItems>"
 	foreach ($field in $groupBy) {
 		if ($field -is [string]) {
+			if ($field -eq 'Auto') {
+				# Auto-группировка (по аналогии с "Auto" в selection)
+				X "$indent`t<dcsset:item xsi:type=`"dcsset:GroupItemAuto`"/>"
+				continue
+			}
 			X "$indent`t<dcsset:item xsi:type=`"dcsset:GroupItemField`">"
 			X "$indent`t`t<dcsset:field>$(Esc-Xml $field)</dcsset:field>"
 			X "$indent`t`t<dcsset:groupType>Items</dcsset:groupType>"

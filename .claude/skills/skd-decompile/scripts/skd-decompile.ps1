@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.16 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.17 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1152,6 +1152,9 @@ function Build-SelectionItem {
 	if (-not $xt) {
 		$fName = Get-Text $item "dcsset:field"
 		if ($fName) { return $fName }
+		# Пустой <field/> → wildcard (apply to all) — эквивалентно Auto
+		$fieldEl = $item.SelectSingleNode("dcsset:field", $ns)
+		if ($fieldEl) { return 'Auto' }
 	}
 	switch ($xt) {
 		'SelectedItemAuto' { return 'Auto' }
@@ -1352,7 +1355,9 @@ function Get-GroupFields {
 	if (-not $gi) { return ,$gFields }
 	foreach ($gItem in $gi.SelectNodes("dcsset:item", $ns)) {
 		$gxt = Get-LocalXsiType $gItem
-		if ($gxt -eq 'GroupItemField') {
+		if ($gxt -eq 'GroupItemAuto') {
+			$gFields += 'Auto'
+		} elseif ($gxt -eq 'GroupItemField') {
 			$gf = Get-Text $gItem "dcsset:field"
 			$pat = Get-Text $gItem "dcsset:periodAdditionType"
 			$gt = Get-Text $gItem "dcsset:groupType"
@@ -1613,10 +1618,20 @@ function Build-DataSet {
 		$fi = 0
 		foreach ($fn in $fieldNodes) {
 			$fxsi = Get-LocalXsiType $fn
-			if ($fxsi -ne 'DataSetFieldField') {
-				$fields += (New-Sentinel -kind "FieldType:$fxsi" -loc "$loc/field[$fi]" -detail 'Тип поля не DataSetFieldField')
-			} else {
+			if ($fxsi -eq 'DataSetFieldField') {
 				$fields += (Build-Field -fieldNode $fn -loc "$loc/field[$fi]")
+			} elseif ($fxsi -eq 'DataSetFieldFolder') {
+				# Поле-папка для UI-группировки (только dataPath+title, без типа/роли)
+				$folderObj = [ordered]@{
+					field = (Get-Text $fn "r:dataPath")
+					folder = $true
+				}
+				$titleNode = $fn.SelectSingleNode("r:title", $ns)
+				$title = Get-MLText $titleNode
+				if ($title) { $folderObj['title'] = $title }
+				$fields += $folderObj
+			} else {
+				$fields += (New-Sentinel -kind "FieldType:$fxsi" -loc "$loc/field[$fi]" -detail 'Тип поля не DataSetFieldField/Folder')
 			}
 			$fi++
 		}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.34 — Compile 1C DCS from JSON
+# skd-compile v1.35 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -642,6 +642,18 @@ def emit_field(lines, field_def, indent):
         # inputParameters — массив элементов, типизированных по форме value
         if field_def.get('inputParameters') is not None:
             f['inputParameters'] = field_def['inputParameters']
+        # folder: true → DataSetFieldFolder
+        if field_def.get('folder') is True:
+            f['folder'] = True
+
+    # DataSetFieldFolder — только dataPath + title
+    if f.get('folder'):
+        lines.append(f'{indent}<field xsi:type="DataSetFieldFolder">')
+        lines.append(f'{indent}\t<dataPath>{esc_xml(f["dataPath"])}</dataPath>')
+        if f.get('title'):
+            emit_mltext(lines, f'{indent}\t', 'title', f['title'])
+        lines.append(f'{indent}</field>')
+        return
 
     lines.append(f'{indent}<field xsi:type="DataSetFieldField">')
     lines.append(f'{indent}\t<dataPath>{esc_xml(f["dataPath"])}</dataPath>')
@@ -1861,6 +1873,9 @@ def emit_group_items(lines, group_by, indent):
     lines.append(f'{indent}<dcsset:groupItems>')
     for field in group_by:
         if isinstance(field, str):
+            if field == 'Auto':
+                lines.append(f'{indent}\t<dcsset:item xsi:type="dcsset:GroupItemAuto"/>')
+                continue
             lines.append(f'{indent}\t<dcsset:item xsi:type="dcsset:GroupItemField">')
             lines.append(f'{indent}\t\t<dcsset:field>{esc_xml(field)}</dcsset:field>')
             lines.append(f'{indent}\t\t<dcsset:groupType>Items</dcsset:groupType>')
