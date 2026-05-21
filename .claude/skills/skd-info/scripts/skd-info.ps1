@@ -1,4 +1,4 @@
-﻿# skd-info v1.4 — Analyze 1C DCS structure
+﻿# skd-info v1.5 — Analyze 1C DCS structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory=$true)]
@@ -1875,7 +1875,12 @@ $totalLines = $result.Count
 # OutFile
 if ($OutFile) {
 	$utf8Bom = New-Object System.Text.UTF8Encoding($true)
-	[System.IO.File]::WriteAllLines((Join-Path (Get-Location) $OutFile), $result, $utf8Bom)
+	if ([System.IO.Path]::IsPathRooted($OutFile)) {
+		$outPath = [System.IO.Path]::GetFullPath($OutFile)
+	} else {
+		$outPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $OutFile))
+	}
+	[System.IO.File]::WriteAllLines($outPath, $result, $utf8Bom)
 	Write-Host "Written $totalLines lines to $OutFile"
 	exit 0
 }

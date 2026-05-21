@@ -279,9 +279,10 @@ function buildArgs(skillConfig, caseData, workDir, inputFilePath, runtime) {
     }
   }
 
-  // Append extra args from case (for optional params like -Vendor, -Version)
+  // Append extra args from case (for optional params like -Vendor, -Version).
+  // Supports {workDir} substitution for tests that need absolute paths inside the workspace.
   if (caseData.args_extra) {
-    args.push(...caseData.args_extra);
+    args.push(...caseData.args_extra.map(a => typeof a === 'string' ? a.replace('{workDir}', workDir) : a));
   }
 
   return { scriptPath, args };
