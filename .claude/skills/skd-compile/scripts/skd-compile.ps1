@@ -1,4 +1,4 @@
-﻿# skd-compile v1.28 — Compile 1C DCS from JSON
+﻿# skd-compile v1.29 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -767,6 +767,10 @@ function Emit-Field {
 		if ($fieldDef.attrRestrict) {
 			$f["attrRestrict"] = @($fieldDef.attrRestrict)
 		}
+		# orderExpression — {expression, orderType, autoOrder}
+		if ($fieldDef.orderExpression) {
+			$f["orderExpression"] = $fieldDef.orderExpression
+		}
 	}
 
 	X "$indent<field xsi:type=`"DataSetFieldField`">"
@@ -827,6 +831,19 @@ function Emit-Field {
 			}
 		}
 		X "$indent`t</role>"
+	}
+
+	# OrderExpression — после role, до valueType
+	if ($f["orderExpression"]) {
+		$oe = $f["orderExpression"]
+		$expr = if ($oe.expression) { "$($oe.expression)" } else { '' }
+		$oType = if ($oe.orderType) { "$($oe.orderType)" } else { 'Asc' }
+		$autoOrder = if ($null -ne $oe.autoOrder) { $(if ($oe.autoOrder) { 'true' } else { 'false' }) } else { 'false' }
+		X "$indent`t<orderExpression>"
+		X "$indent`t`t<dcscom:expression>$(Esc-Xml $expr)</dcscom:expression>"
+		X "$indent`t`t<dcscom:orderType>$oType</dcscom:orderType>"
+		X "$indent`t`t<dcscom:autoOrder>$autoOrder</dcscom:autoOrder>"
+		X "$indent`t</orderExpression>"
 	}
 
 	# ValueType

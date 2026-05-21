@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.10 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.11 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -345,12 +345,19 @@ function Build-Field {
 	param($fieldNode, [string]$loc)
 	# Silent-drop detection (non-blocking warnings only)
 	Check-InputParameters -parentNode $fieldNode -loc $loc
-	$orderExpr = $fieldNode.SelectSingleNode("r:orderExpression", $ns)
-	if ($orderExpr) {
-		$expr = Get-Text $orderExpr "dcscom:expression"
-		if ($expr) {
-			$null = Add-Warning -kind 'SilentDrop:orderExpression' -loc "$loc/orderExpression" -detail "Поле имеет orderExpression='$expr' — не воспроизводится в DSL"
-		}
+	# orderExpression теперь поддерживается в DSL — читается ниже в needsObject
+	$orderExprNode = $fieldNode.SelectSingleNode("r:orderExpression", $ns)
+	$orderExpression = $null
+	if ($orderExprNode) {
+		$oeExpr = Get-Text $orderExprNode "dcscom:expression"
+		$oeType = Get-Text $orderExprNode "dcscom:orderType"
+		$oeAuto = Get-Text $orderExprNode "dcscom:autoOrder"
+		$orderExpression = [ordered]@{}
+		if ($oeExpr) { $orderExpression['expression'] = $oeExpr }
+		if ($oeType) { $orderExpression['orderType'] = $oeType }
+		# autoOrder=false — это дефолт; emit'им только если true (или явно записан false)
+		if ($oeAuto -eq 'true') { $orderExpression['autoOrder'] = $true }
+		elseif ($oeAuto -eq 'false') { $orderExpression['autoOrder'] = $false }
 	}
 	$dataPath = Get-Text $fieldNode "r:dataPath"
 	$fieldName = Get-Text $fieldNode "r:field"
@@ -369,7 +376,7 @@ function Build-Field {
 
 	# Можно ли роль положить в shorthand-строку?
 	$roleInString = $roleRendered -and $roleRendered.isString
-	$needsObject = $title -or $appearance -or $presExpr -or ($typeShort -is [array]) -or ($roleRendered -and -not $roleInString)
+	$needsObject = $title -or $appearance -or $presExpr -or ($typeShort -is [array]) -or ($roleRendered -and -not $roleInString) -or $orderExpression
 
 	if (-not $needsObject) {
 		# shorthand: "Name: type @role K=V #restrict"
@@ -397,6 +404,7 @@ function Build-Field {
 	if ($title) { $obj['title'] = $title }
 	if ($typeShort) { $obj['type'] = $typeShort }
 	if ($roleRendered) { $obj['role'] = $roleRendered.value }
+	if ($orderExpression) { $obj['orderExpression'] = $orderExpression }
 	if ($restrictTokens) { $obj['restrict'] = ($restrictTokens | ForEach-Object { $_ -replace '^#','' }) }
 	if ($presExpr) { $obj['presentationExpression'] = $presExpr }
 	if ($appearance) { $obj['appearance'] = $appearance }

@@ -141,7 +141,8 @@
   "restrict": ["noFilter", "noGroup"],
   "attrRestrict": ["noFilter"],
   "appearance": { "Формат": "ЧДЦ=2" },
-  "presentationExpression": "Формат(Сумма, \"ЧДЦ=2\")"
+  "presentationExpression": "Формат(Сумма, \"ЧДЦ=2\")",
+  "orderExpression": { "expression": "ЕстьNULL(Поле.Порядок, 10000)", "orderType": "Asc", "autoOrder": false }
 }
 ```
 
