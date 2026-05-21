@@ -10,21 +10,20 @@ allowed-tools:
   - Glob
 ---
 
-# /skd-decompile — извлечение JSON-черновика из Template.xml СКД
+# /skd-decompile — JSON-черновик из Template.xml СКД
 
-Читает существующий `Template.xml` (DataCompositionSchema) и эмитит JSON в формате, который принимает `/skd-compile`. Получившийся JSON — **черновик**: гарантируется только структурная эквивалентность, не байтовая.
+Читает Template.xml и эмитит JSON в формате `skd-compile`. **Результат — черновик**, а не обратимое представление: см. раздел «Что получаешь».
 
 ## Когда использовать
 
-- **Scaffold нового отчёта по образцу.** Взять существующий СКД, получить JSON, поправить параметры/поля/шаблоны, скомпилировать в новый отчёт.
-- **Глобальный рефакторинг.** Когда правка структурная (переписать вариант, перерисовать шаблон), а не точечная.
+- **Scaffold нового отчёта по образцу** — взять существующий СКД, получить JSON, поправить и скомпилировать в новый.
+- **Структурный рефакторинг** — переписать вариант, перерисовать шаблон, перебрать набор полей.
 
 ## Когда **не** использовать
 
-- **Точечные правки готового отчёта** — добавить поле, фильтр, итог, переименовать. Для этого есть `/skd-edit`: точечно, без полной реконструкции, без риска потерь.
-- **Анализ схемы** — для обзора используй `/skd-info` (overview/query/fields/variant/templates).
+- **Точечные правки готового отчёта** (добавить поле, фильтр, итог, переименовать) → `/skd-edit`. Точечно, без потерь, без полной реконструкции.
 
-## Параметры и команда
+## Параметры
 
 | Параметр | Описание |
 |----------|----------|
@@ -32,33 +31,25 @@ allowed-tools:
 | `OutputPath` | Путь к выходному JSON. Если не задан — JSON в stdout |
 
 ```powershell
-# В файл (рядом, если есть warnings, кладётся <basename>.warnings.md)
 powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/skd-decompile.ps1" -TemplatePath "<Template.xml>" -OutputPath "<out.json>"
-
-# В stdout
-powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/skd-decompile.ps1" -TemplatePath "<Template.xml>"
 ```
 
-## Гарантии и ограничения
+При наличии `-OutputPath` рядом пишется `<basename>.warnings.md`, если есть непокрытые конструкции.
 
-- **JSON всегда валиден** — компилируется через `skd-compile` без синтаксических ошибок.
-- **Покрытие — DSL `skd-compile`.** Конструкции XML вне DSL отмечаются sentinel-объектом `{"__unsupported__": {...}}` и описаны в `<basename>.warnings.md` рядом с JSON. `skd-compile` фейлится при наличии sentinel — это специально, чтобы пользователь сначала разобрался с непокрытым.
-- **Не байтовая эквивалентность.** После round-trip XML структурно эквивалентен оригиналу, но порядок атрибутов/секций может отличаться.
-- **Стиль ячейки** определяется по совпадению с одним из built-in (`header`/`data`/`subheader`/`total`) или user-стилей из `presets/skills/skd/skd-styles.json`. Точечный custom appearance не сворачивается → sentinel.
+## Что получаешь
 
-## Не поддерживается (fail-fast)
+JSON — это **черновик, не полное обратимое представление СКД**. Декомпилятор знает только то, что умеет `skd-compile`, поэтому:
 
-- Picture cells в шаблонах (`<dcsat:Picture>`).
-- Параметры типа ХранилищеЗначения.
-- Sibling templates / templateCondition (вариативные шаблоны).
-- Не-СКД корневые XML (например, spreadsheet `<document>` — для них есть `/mxl-decompile`).
+- **Покрытые конструкции** эмитятся в JSON напрямую (поля, параметры с `@autoDates`, шаблоны с rows-стилями, варианты с structure/selection/filter/order/conditionalAppearance и т.п.).
+- **Непокрытые, но не критичные** (например, `orderExpression` на полях, `ChoiceParameterLinks` на параметрах, custom per-cell appearance, scope в conditionalAppearance) — заменяются на sentinel `{"__unsupported__": {"id": "W###", "kind": "...", "loc": "..."}}`. JSON остаётся валидным, но **`skd-compile` отказывается компилировать его до тех пор, пока sentinel не убраны** — это намеренно, чтобы непокрытое не уехало в финальный отчёт незамеченным.
+- **Критичные конструкции** (Picture cells, ХранилищеЗначения, вариативные шаблоны, не-СКД root) — fail-fast: скрипт завершается с ненулевым кодом и пишет в stderr какой именно элемент не поддержан.
 
-При обнаружении — скрипт пишет в stderr понятное сообщение и завершается с ненулевым кодом.
+Все непокрытые места — с координатами в `.warnings.md`.
 
-## Верификация
+## Workflow
 
-```
-/skd-compile -DefinitionFile <out.json> -OutputPath <new-Template.xml>   — обратная компиляция
-/skd-validate <new-Template.xml>                                          — валидация результата
-/skd-info <new-Template.xml>                                              — визуальный осмотр
-```
+1. `/skd-decompile <Template.xml> -OutputPath draft.json` — получить черновик.
+2. Открыть `draft.warnings.md`, посмотреть, что не покрылось.
+3. Поправить JSON под задачу. Sentinel-объекты — заменить на ручную реализацию (через явный raw `template`, через ручное описание appearance и т.п.) либо удалить, если конструкция в новом отчёте не нужна.
+4. `/skd-compile -DefinitionFile draft.json -OutputPath new-Template.xml` — собрать обратно.
+5. `/skd-validate` + `/skd-info` — проверить.
