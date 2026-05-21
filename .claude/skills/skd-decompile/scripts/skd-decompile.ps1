@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.2 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.3 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -143,10 +143,10 @@ function Get-OneTypeShorthand {
 						$sign = Get-Text $qualNumber "v8:AllowedSign"
 						$signSuf = ''
 						if ($sign -eq 'Nonnegative') { $signSuf = ',nonneg' }
-						# defaults: 10,2,Any → "decimal"
-						if ($d -eq 10 -and $f -eq 2 -and -not $signSuf) { return 'decimal' }
+						# Always explicit (D,F) — JSON readable, no surprise from default folding
 						if ($f -eq 0) { return "decimal($d$signSuf)" }
-						return "decimal($d,$f$($signSuf -replace '^,',''))".Replace('decimal(', 'decimal(').Replace(',,',',')
+						if ($signSuf) { return "decimal($d,$f$signSuf)" }
+						return "decimal($d,$f)"
 					}
 					return 'decimal'
 				}
@@ -294,6 +294,204 @@ function Build-Field {
 	return $obj
 }
 
+# Build calculatedField → shorthand string or object form
+function Build-CalcField {
+	param($cfNode, [string]$loc)
+	$dataPath = Get-Text $cfNode "r:dataPath"
+	$expression = Get-Text $cfNode "r:expression"
+	$titleNode = $cfNode.SelectSingleNode("r:title", $ns)
+	$title = Get-MLText $titleNode
+	$valueTypeNode = $cfNode.SelectSingleNode("r:valueType", $ns)
+	$typeShort = Get-ValueTypeShorthand $valueTypeNode
+	$restrictTokens = Get-RestrictionTokens $cfNode.SelectSingleNode("r:useRestriction", $ns)
+	$appNode = $cfNode.SelectSingleNode("r:appearance", $ns)
+	$appearance = Get-AppearanceDict $appNode
+
+	# multilingual title (non-ru) → object form
+	$titleNeedsObject = ($title -is [System.Collections.IDictionary]) -or ($typeShort -is [array])
+	$needsObject = $appearance -or $titleNeedsObject
+
+	if (-not $needsObject) {
+		# shorthand: "Name [Title]: type = expression #restrict"
+		$s = $dataPath
+		if ($title) { $s += " [$title]" }
+		if ($typeShort) { $s += ": $typeShort" }
+		if ($expression) { $s += " = $expression" }
+		if ($restrictTokens) { $s += ' ' + ($restrictTokens -join ' ') }
+		return $s
+	}
+
+	$obj = [ordered]@{ name = $dataPath }
+	if ($title) { $obj['title'] = $title }
+	if ($typeShort) { $obj['type'] = $typeShort }
+	if ($expression) { $obj['expression'] = $expression }
+	if ($restrictTokens) { $obj['restrict'] = ($restrictTokens | ForEach-Object { $_ -replace '^#','' }) }
+	if ($appearance) { $obj['appearance'] = $appearance }
+	return $obj
+}
+
+# Build totalField → shorthand or object form
+function Build-TotalField {
+	param($tfNode)
+	$dataPath = Get-Text $tfNode "r:dataPath"
+	$expression = Get-Text $tfNode "r:expression"
+	# Detect Func(<dataPath>) → shorthand "name: Func"
+	if ($expression -match '^(\w+)\(([^)]*)\)$') {
+		$func = $matches[1]
+		$inner = $matches[2].Trim()
+		if ($inner -eq $dataPath) {
+			return "$dataPath`: $func"
+		}
+		# "name: Func(expr)" form — also a valid shorthand
+		return "$dataPath`: $func($inner)"
+	}
+	# group attachment via groupItem — Ring 2 / object form
+	$groupNodes = $tfNode.SelectNodes("r:group", $ns)
+	$obj = [ordered]@{ dataPath = $dataPath; expression = $expression }
+	if ($groupNodes -and $groupNodes.Count -gt 0) {
+		$groups = @()
+		foreach ($g in $groupNodes) { $groups += $g.InnerText }
+		$obj['group'] = $groups
+	}
+	return $obj
+}
+
+# Detect StandardPeriod variant from <value> node
+function Get-StandardPeriodVariant {
+	param($valueNode)
+	if (-not $valueNode) { return $null }
+	$variant = Get-Text $valueNode "v8:variant"
+	if ($variant) { return $variant }
+	return $null
+}
+
+# Build parameter → shorthand or object form
+function Build-Parameter {
+	param($pNode, [string]$loc)
+	$name = Get-Text $pNode "r:name"
+	$titleNode = $pNode.SelectSingleNode("r:title", $ns)
+	$title = Get-MLText $titleNode
+	$valueTypeNode = $pNode.SelectSingleNode("r:valueType", $ns)
+	$typeShort = Get-ValueTypeShorthand $valueTypeNode
+
+	# value
+	$valueNode = $pNode.SelectSingleNode("r:value", $ns)
+	$valueDisplay = $null
+	$valueIsNil = $false
+	if ($valueNode) {
+		$nil = $valueNode.GetAttribute("nil", $NS_XSI)
+		if ($nil -eq 'true') { $valueIsNil = $true }
+		else {
+			$vType = Get-LocalXsiType $valueNode
+			if ($vType -eq 'StandardPeriod') {
+				$variant = Get-Text $valueNode "v8:variant"
+				if ($variant -and $variant -ne 'Custom') { $valueDisplay = $variant }
+				# Custom with explicit dates → object form (handled below via needsObject)
+			} elseif ($vType -eq 'DesignTimeValue') {
+				$valueDisplay = $valueNode.InnerText
+			} elseif ($vType -eq 'LocalStringType') {
+				$valueDisplay = Get-MLText $valueNode
+			} else {
+				$txt = $valueNode.InnerText
+				if ($txt) { $valueDisplay = $txt }
+			}
+		}
+	}
+
+	$valueListAllowed = (Get-Text $pNode "r:valueListAllowed") -eq 'true'
+	$availableAsField = Get-Text $pNode "r:availableAsField"
+	$hidden = $availableAsField -eq 'false'
+	$denyIncomplete = (Get-Text $pNode "r:denyIncompleteValues") -eq 'true'
+	$useAttr = Get-Text $pNode "r:use"
+	$useRestriction = (Get-Text $pNode "r:useRestriction") -eq 'true'
+	$expression = Get-Text $pNode "r:expression"
+
+	# availableValues
+	$avNodes = $pNode.SelectNodes("r:availableValue", $ns)
+	$availableValues = @()
+	foreach ($av in $avNodes) {
+		$avValNode = $av.SelectSingleNode("r:value", $ns)
+		$avPresNode = $av.SelectSingleNode("r:presentation", $ns)
+		$avEntry = [ordered]@{}
+		if ($avValNode) { $avEntry['value'] = $avValNode.InnerText }
+		if ($avPresNode) { $avEntry['presentation'] = Get-MLText $avPresNode }
+		$availableValues += $avEntry
+	}
+
+	$flags = @()
+
+	$result = [ordered]@{
+		name = $name
+		title = $title
+		typeShort = $typeShort
+		valueDisplay = $valueDisplay
+		valueIsNil = $valueIsNil
+		valueListAllowed = $valueListAllowed
+		hidden = $hidden
+		denyIncomplete = $denyIncomplete
+		useAttr = $useAttr
+		useRestriction = $useRestriction
+		expression = $expression
+		availableValues = $availableValues
+	}
+	return $result
+}
+
+# Render parameter (after autoDates folding) → shorthand or object form
+function Render-Parameter {
+	param($p)
+	$name = $p.name
+	$title = $p.title
+	$typeShort = $p.typeShort
+	$valueDisplay = $p.valueDisplay
+	$valueIsNil = $p.valueIsNil
+	$flags = @()
+	if ($p.autoDates)          { $flags += '@autoDates' }
+	if ($p.valueListAllowed)   { $flags += '@valueList' }
+	if ($p.hidden)             { $flags += '@hidden' }
+
+	$titleNeedsObject = ($title -is [System.Collections.IDictionary])
+	$typeIsArray = ($typeShort -is [array])
+	$valueIsDict = ($valueDisplay -is [System.Collections.IDictionary])
+
+	# Object form needed if: availableValues, multilingual title, composite type,
+	# explicit denyIncomplete/use without @autoDates, useRestriction without autoDates, expression set
+	$needsObject = $false
+	if ($p.availableValues -and $p.availableValues.Count -gt 0) { $needsObject = $true }
+	if ($titleNeedsObject) { $needsObject = $true }
+	if ($typeIsArray) { $needsObject = $true }
+	if ($valueIsDict) { $needsObject = $true }
+	if (-not $p.autoDates) {
+		# @autoDates implies use=Always + denyIncomplete=true defaults — only object form if NOT autoDates
+		if ($p.denyIncomplete) { $needsObject = $true }
+		if ($p.useAttr) { $needsObject = $true }
+	}
+	# useRestriction is auto-generated by compile for @hidden params; ignore as object trigger
+	if ($p.expression) { $needsObject = $true }
+
+	if (-not $needsObject) {
+		$s = $name
+		if ($title) { $s += " [$title]" }
+		if ($typeShort) { $s += ": $typeShort" }
+		if (-not $valueIsNil -and $null -ne $valueDisplay -and $valueDisplay -ne '') { $s += " = $valueDisplay" }
+		if ($flags) { $s += ' ' + ($flags -join ' ') }
+		return $s
+	}
+
+	$obj = [ordered]@{ name = $name }
+	if ($title) { $obj['title'] = $title }
+	if ($typeShort) { $obj['type'] = $typeShort }
+	if (-not $valueIsNil -and $null -ne $valueDisplay -and $valueDisplay -ne '') { $obj['value'] = $valueDisplay }
+	if ($p.useAttr -and -not $p.autoDates) { $obj['use'] = $p.useAttr }
+	if ($p.denyIncomplete -and -not $p.autoDates) { $obj['denyIncompleteValues'] = $true }
+	if ($p.hidden) { $obj['hidden'] = $true }
+	if ($p.valueListAllowed) { $obj['valueListAllowed'] = $true }
+	if ($p.autoDates) { $obj['autoDates'] = $true }
+	if ($p.expression) { $obj['expression'] = $p.expression }
+	if ($p.availableValues -and $p.availableValues.Count -gt 0) { $obj['availableValues'] = $p.availableValues }
+	return $obj
+}
+
 # --- 4. dataSources ---
 
 $dataSources = @()
@@ -357,11 +555,72 @@ foreach ($dsNode in $dsNodes) {
 	$dataSets += $ds
 }
 
+# --- 5b. calculatedFields ---
+
+$calculatedFields = @()
+$cfNodes = $root.SelectNodes("r:calculatedField", $ns)
+$ci = 0
+foreach ($cf in $cfNodes) {
+	$calculatedFields += (Build-CalcField -cfNode $cf -loc "calculatedField[$ci]")
+	$ci++
+}
+
+# --- 5c. totalFields ---
+
+$totalFields = @()
+$tfNodes = $root.SelectNodes("r:totalField", $ns)
+foreach ($tf in $tfNodes) { $totalFields += (Build-TotalField -tfNode $tf) }
+
+# --- 5d. parameters with autoDates folding ---
+
+$paramsRaw = @()
+$pi = 0
+$pNodes = $root.SelectNodes("r:parameter", $ns)
+foreach ($p in $pNodes) {
+	$paramsRaw += (Build-Parameter -pNode $p -loc "parameter[$pi]")
+	$pi++
+}
+
+# Detect autoDates: for each StandardPeriod parameter P, look for two siblings with
+# expression "&P.ДатаНачала" and "&P.ДатаОкончания". If both found, mark P with @autoDates
+# and remove the companions.
+$paramByName = @{}
+foreach ($p in $paramsRaw) { $paramByName[$p.name] = $p }
+
+$removedNames = @{}
+foreach ($p in $paramsRaw) {
+	if ($p.typeShort -ne 'StandardPeriod') { continue }
+	$parentName = $p.name
+	$startExpr = '&' + $parentName + '.ДатаНачала'
+	$endExpr   = '&' + $parentName + '.ДатаОкончания'
+	$startMatch = $null
+	$endMatch = $null
+	foreach ($q in $paramsRaw) {
+		if ($q.name -eq $parentName) { continue }
+		if ($q.expression -eq $startExpr) { $startMatch = $q.name }
+		elseif ($q.expression -eq $endExpr) { $endMatch = $q.name }
+	}
+	if ($startMatch -and $endMatch) {
+		$p['autoDates'] = $true
+		$removedNames[$startMatch] = $true
+		$removedNames[$endMatch] = $true
+	}
+}
+
+$parameters = @()
+foreach ($p in $paramsRaw) {
+	if ($removedNames.ContainsKey($p.name)) { continue }
+	$parameters += (Render-Parameter -p $p)
+}
+
 # --- 6. Build top-level JSON object ---
 
 $out = [ordered]@{}
 if ($emitDataSources) { $out['dataSources'] = $dataSources }
 $out['dataSets'] = $dataSets
+if ($calculatedFields.Count -gt 0) { $out['calculatedFields'] = $calculatedFields }
+if ($totalFields.Count -gt 0)      { $out['totalFields'] = $totalFields }
+if ($parameters.Count -gt 0)       { $out['parameters'] = $parameters }
 
 # --- 7. Serialize ---
 
@@ -394,7 +653,7 @@ if ($OutputPath) {
 		Write-Host "Warnings: $wPath ($($script:warnings.Count) issue(s))" -ForegroundColor Yellow
 	}
 
-	[Console]::Error.WriteLine("Decompiled: dataSets=$($dataSets.Count), warnings=$($script:warnings.Count)")
+	[Console]::Error.WriteLine("Decompiled: dataSets=$($dataSets.Count), calc=$($calculatedFields.Count), totals=$($totalFields.Count), params=$($parameters.Count), warnings=$($script:warnings.Count)")
 } else {
 	Write-Output $json
 	if ($script:warnings.Count -gt 0) {
