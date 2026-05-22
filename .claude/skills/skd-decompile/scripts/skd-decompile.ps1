@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.24 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.25 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -2013,6 +2013,75 @@ foreach ($sv in $svNodes) {
 			}
 		}
 		return $null
+	}
+
+	# userFields — пользовательские вычисляемые поля (Expression / Case)
+	$ufNode = $settingsNode.SelectSingleNode("dcsset:userFields", $ns)
+	if ($ufNode) {
+		$ufList = @()
+		$ufi = 0
+		foreach ($ufItem in $ufNode.SelectNodes("dcsset:item", $ns)) {
+			$uxt = Get-LocalXsiType $ufItem
+			$entry = [ordered]@{}
+			$dp = Get-Text $ufItem "dcsset:dataPath"
+			if ($dp) { $entry['dataPath'] = $dp }
+			$titleN = $ufItem.SelectSingleNode("dcsset:lwsTitle", $ns)
+			$titleV = Get-MLText $titleN
+			if ($titleV) { $entry['title'] = $titleV }
+			if ($uxt -eq 'UserFieldExpression') {
+				$dEx = Get-Text $ufItem "dcsset:detailExpression"
+				$dEp = Get-Text $ufItem "dcsset:detailExpressionPresentation"
+				$tEx = Get-Text $ufItem "dcsset:totalExpression"
+				$tEp = Get-Text $ufItem "dcsset:totalExpressionPresentation"
+				if ($dEx -or $dEp) {
+					$d = [ordered]@{}
+					if ($dEx) { $d['expression'] = $dEx }
+					if ($dEp) { $d['presentation'] = $dEp }
+					$entry['detail'] = $d
+				}
+				if ($tEx -or $tEp) {
+					$t = [ordered]@{}
+					if ($tEx) { $t['expression'] = $tEx }
+					if ($tEp) { $t['presentation'] = $tEp }
+					$entry['total'] = $t
+				}
+			} elseif ($uxt -eq 'UserFieldCase') {
+				$casesNode = $ufItem.SelectSingleNode("dcsset:cases", $ns)
+				$casesArr = @()
+				if ($casesNode) {
+					foreach ($caseItem in $casesNode.SelectNodes("dcsset:item", $ns)) {
+						$ce = [ordered]@{}
+						$cfNode = $caseItem.SelectSingleNode("dcsset:filter", $ns)
+						if ($cfNode -and $cfNode.SelectNodes("dcsset:item", $ns).Count -gt 0) {
+							$cfa = @()
+							foreach ($cfi in $cfNode.SelectNodes("dcsset:item", $ns)) { $cfa += (Build-FilterItem -itemNode $cfi -loc "variant[$vi]/userField/case/filter") }
+							$ce['filter'] = $cfa
+						}
+						$cvNode = $caseItem.SelectSingleNode("dcsset:value", $ns)
+						if ($cvNode) {
+							$cvType = Get-LocalXsiType $cvNode
+							$cvText = $cvNode.InnerText
+							if ($cvType -eq 'boolean') { $ce['value'] = ($cvText -eq 'true') }
+							elseif ($cvType -eq 'decimal') {
+								if ($cvText -match '^-?\d+$') { $ce['value'] = [int]$cvText }
+								else { $ce['value'] = [double]$cvText }
+							}
+							else { $ce['value'] = $cvText }
+						}
+						$cpNode = $caseItem.SelectSingleNode("dcsset:lwsPresentationValue", $ns)
+						$cpV = Get-MLText $cpNode
+						if ($cpV) { $ce['presentation'] = $cpV }
+						$casesArr += $ce
+					}
+				}
+				$entry['cases'] = $casesArr
+			} else {
+				$entry['__unsupported__'] = (New-Sentinel -kind "UserField:$uxt" -loc "variant[$vi]/userField[$ufi]" -detail 'Неизвестный тип пользовательского поля')['__unsupported__']
+			}
+			$ufList += $entry
+			$ufi++
+		}
+		if ($ufList.Count -gt 0) { $settings['userFields'] = $ufList }
 	}
 
 	# selection (top-level)
