@@ -1,4 +1,4 @@
-﻿# skd-compile v1.40 — Compile 1C DCS from JSON
+﻿# skd-compile v1.41 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -853,6 +853,10 @@ function Emit-Field {
 		if ($fieldDef.attrRestrict) {
 			$f["attrRestrict"] = @($fieldDef.attrRestrict)
 		}
+		# availableValues — array of {value, presentation}
+		if ($fieldDef.availableValues) {
+			$f["availableValues"] = $fieldDef.availableValues
+		}
 		# orderExpression — {expression, orderType, autoOrder}
 		if ($fieldDef.orderExpression) {
 			$f["orderExpression"] = $fieldDef.orderExpression
@@ -954,6 +958,27 @@ function Emit-Field {
 		X "$indent`t<valueType>"
 		Emit-ValueType -typeStr $f.type -indent "$indent`t`t"
 		X "$indent`t</valueType>"
+	}
+
+	# AvailableValues — list of allowed values with optional multilang presentation
+	if ($f["availableValues"]) {
+		foreach ($av in $f["availableValues"]) {
+			X "$indent`t<availableValue>"
+			$avVal = $av.value
+			$avType = if ($av.valueType) { "$($av.valueType)" } else { '' }
+			if (-not $avType) {
+				if ($avVal -is [bool]) { $avType = 'xs:boolean' }
+				elseif ($avVal -is [int] -or $avVal -is [long] -or $avVal -is [double]) { $avType = 'xs:decimal' }
+				elseif ("$avVal" -match '^\d{4}-\d{2}-\d{2}T') { $avType = 'xs:dateTime' }
+				else { $avType = 'xs:string' }
+			}
+			$avStr = if ($avVal -is [bool]) { "$avVal".ToLower() } else { Esc-Xml "$avVal" }
+			X "$indent`t`t<value xsi:type=`"$avType`">$avStr</value>"
+			if ($av.presentation) {
+				Emit-MLText -tag "presentation" -text $av.presentation -indent "$indent`t`t"
+			}
+			X "$indent`t</availableValue>"
+		}
 	}
 
 	# Appearance

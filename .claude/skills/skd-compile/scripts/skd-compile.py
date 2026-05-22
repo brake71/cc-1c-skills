@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.40 — Compile 1C DCS from JSON
+# skd-compile v1.41 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -646,6 +646,9 @@ def emit_field(lines, field_def, indent):
         # attrRestrict
         if field_def.get('attrRestrict'):
             f['attrRestrict'] = list(field_def['attrRestrict'])
+        # availableValues — array of {value, presentation}
+        if field_def.get('availableValues'):
+            f['availableValues'] = field_def['availableValues']
         # orderExpression — {expression, orderType, autoOrder}
         if field_def.get('orderExpression'):
             f['orderExpression'] = field_def['orderExpression']
@@ -731,6 +734,27 @@ def emit_field(lines, field_def, indent):
         lines.append(f'{indent}\t<valueType>')
         emit_value_type(lines, f['type'], f'{indent}\t\t')
         lines.append(f'{indent}\t</valueType>')
+
+    # AvailableValues — list of allowed values with optional multilang presentation
+    if f.get('availableValues'):
+        for av in f['availableValues']:
+            lines.append(f'{indent}\t<availableValue>')
+            av_val = av.get('value')
+            av_type = str(av.get('valueType', '')) if av.get('valueType') else ''
+            if not av_type:
+                if isinstance(av_val, bool):
+                    av_type = 'xs:boolean'
+                elif isinstance(av_val, (int, float)):
+                    av_type = 'xs:decimal'
+                elif re.match(r'^\d{4}-\d{2}-\d{2}T', str(av_val)):
+                    av_type = 'xs:dateTime'
+                else:
+                    av_type = 'xs:string'
+            av_str = str(av_val).lower() if isinstance(av_val, bool) else esc_xml(str(av_val))
+            lines.append(f'{indent}\t\t<value xsi:type="{av_type}">{av_str}</value>')
+            if av.get('presentation'):
+                emit_mltext(lines, f'{indent}\t\t', 'presentation', av['presentation'])
+            lines.append(f'{indent}\t</availableValue>')
 
     # Appearance
     if f.get('appearance') and len(f['appearance']) > 0:
