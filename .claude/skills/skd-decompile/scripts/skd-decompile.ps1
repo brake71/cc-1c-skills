@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.44 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.45 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1640,8 +1640,15 @@ function Build-OutputParameters {
 		$val = $it.SelectSingleNode("dcscor:value", $ns)
 		if (-not $pName -or -not $val) { continue }
 		$vType = Get-LocalXsiType $val
-		if ($vType -eq 'LocalStringType') { $d[$pName] = Get-MLText $val }
-		else { $d[$pName] = $val.InnerText }
+		if ($vType -eq 'LocalStringType') { $rawVal = Get-MLText $val }
+		else { $rawVal = $val.InnerText }
+		# <dcscor:use>false</...> → wrapper {value, use: false}
+		$useV = Get-Text $it "dcscor:use"
+		if ($useV -eq 'false') {
+			$d[$pName] = [ordered]@{ value = $rawVal; use = $false }
+		} else {
+			$d[$pName] = $rawVal
+		}
 	}
 	return $d
 }
