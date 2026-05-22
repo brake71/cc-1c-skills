@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.21 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.22 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1287,8 +1287,8 @@ function Build-FilterItem {
 	if ($use -eq 'false') { $flags += '@off' }
 	if ($userId) { $flags += '@user' }
 	if ($viewMode -eq 'QuickAccess') { $flags += '@quickAccess' }
-	elseif ($viewMode -eq 'Normal') { $flags += '@normal' }
 	elseif ($viewMode -eq 'Inaccessible') { $flags += '@inaccessible' }
+	# Normal is the default — do not emit @normal
 
 	# nullity ops have no value
 	$noValueOps = @('filled','notFilled')
@@ -1299,7 +1299,7 @@ function Build-FilterItem {
 		if ($op -notin $noValueOps -and $null -ne $value) { $obj['value'] = $value }
 		if ($use -eq 'false') { $obj['use'] = $false }
 		if ($userId) { $obj['userSettingID'] = 'auto' }
-		if ($viewMode) { $obj['viewMode'] = $viewMode }
+		if ($viewMode -and $viewMode -ne 'Normal') { $obj['viewMode'] = $viewMode }
 		$obj['userSettingPresentation'] = Get-MLText $userPresNode
 		return $obj
 	}
@@ -1334,7 +1334,14 @@ function Build-SelectionItem {
 			$fName = Get-Text $item "dcsset:field"
 			$titleNode = $item.SelectSingleNode("dcsset:lwsTitle", $ns)
 			$title = Get-MLText $titleNode
-			if ($title) { return [ordered]@{ field = $fName; title = $title } }
+			$vm = Get-Text $item "dcsset:viewMode"
+			$hasVM = $vm -and $vm -ne 'Normal'
+			if ($title -or $hasVM) {
+				$obj = [ordered]@{ field = $fName }
+				if ($title) { $obj['title'] = $title }
+				if ($hasVM) { $obj['viewMode'] = $vm }
+				return $obj
+			}
 			return $fName
 		}
 		'SelectedItemFolder' {
@@ -1379,7 +1386,15 @@ function Build-Order {
 			'OrderItemField' {
 				$fn = Get-Text $it "dcsset:field"
 				$ot = Get-Text $it "dcsset:orderType"
-				if ($ot -eq 'Desc') { $out += "$fn desc" } else { $out += $fn }
+				$vm = Get-Text $it "dcsset:viewMode"
+				if ($vm -and $vm -ne 'Normal') {
+					$obj = [ordered]@{ field = $fn }
+					if ($ot -eq 'Desc') { $obj['direction'] = 'desc' }
+					$obj['viewMode'] = $vm
+					$out += $obj
+				} else {
+					if ($ot -eq 'Desc') { $out += "$fn desc" } else { $out += $fn }
+				}
 			}
 			default { $out += (New-Sentinel -kind "OrderItem:$xt" -loc $loc -detail 'Неизвестный тип сортировки') }
 		}
@@ -1437,7 +1452,7 @@ function Build-ConditionalAppearance {
 		$pres = Get-Text $it "dcsset:presentation"
 		if ($pres) { $entry['presentation'] = $pres }
 		$vm = Get-Text $it "dcsset:viewMode"
-		if ($vm) { $entry['viewMode'] = $vm }
+		if ($vm -and $vm -ne 'Normal') { $entry['viewMode'] = $vm }
 		$usid = Get-Text $it "dcsset:userSettingID"
 		if ($usid) { $entry['userSettingID'] = 'auto' }
 		$out += $entry
@@ -1666,17 +1681,17 @@ function Build-Structure {
 		$gFields = Get-GroupFields -parentNode $it -loc $loc
 		if ($gFields.Count -gt 0) { $entry['groupFields'] = $gFields }
 
-		# Local selection — only emit if not "[Auto]" default
+		# Local selection — preserve presence (even [Auto]) for bit-perfect round-trip
 		$selNode = $it.SelectSingleNode("dcsset:selection", $ns)
-		$selItems = Build-Selection -selNode $selNode -loc "$loc/selection"
-		if ($selItems.Count -gt 0 -and -not ($selItems.Count -eq 1 -and $selItems[0] -eq 'Auto')) {
-			$entry['selection'] = $selItems
+		if ($selNode) {
+			$selItems = Build-Selection -selNode $selNode -loc "$loc/selection"
+			if ($selItems.Count -gt 0) { $entry['selection'] = $selItems }
 		}
-		# Local order
+		# Local order — same
 		$ordNode = $it.SelectSingleNode("dcsset:order", $ns)
-		$ordItems = Build-Order -ordNode $ordNode -loc "$loc/order"
-		if ($ordItems.Count -gt 0 -and -not ($ordItems.Count -eq 1 -and $ordItems[0] -eq 'Auto')) {
-			$entry['order'] = $ordItems
+		if ($ordNode) {
+			$ordItems = Build-Order -ordNode $ordNode -loc "$loc/order"
+			if ($ordItems.Count -gt 0) { $entry['order'] = $ordItems }
 		}
 		# Local filter
 		$filterNode = $it.SelectSingleNode("dcsset:filter", $ns)
@@ -1689,6 +1704,19 @@ function Build-Structure {
 		# Children — recursive
 		$children = Build-Structure -node $it -loc "$loc/children"
 		if ($children.Count -gt 0) { $entry['children'] = $children }
+
+		# viewMode / itemsViewMode on the group itself
+		# Read direct-child <dcsset:viewMode> (avoid grabbing item-level ones from selection/filter/order)
+		$gvm = $null; $givm = $null
+		foreach ($ch in $it.ChildNodes) {
+			if ($ch.NodeType -ne 'Element' -or $ch.NamespaceURI -ne 'http://v8.1c.ru/8.1/data-composition-system/settings') { continue }
+			if ($ch.LocalName -eq 'viewMode' -and $null -eq $gvm) { $gvm = $ch.InnerText }
+			elseif ($ch.LocalName -eq 'itemsViewMode' -and $null -eq $givm) { $givm = $ch.InnerText }
+		}
+		# Preserve explicit values (even Normal) so compile bit-perfect roundtrip works:
+		# platform emits viewMode on some StructureItemGroup shapes but not others.
+		if ($null -ne $gvm) { $entry['viewMode'] = $gvm }
+		if ($null -ne $givm) { $entry['itemsViewMode'] = $givm }
 
 		$items += $entry
 		$idx++
@@ -1711,6 +1739,8 @@ function Try-StructureShorthand {
 		if ($cur.Contains('selection')) { return $null }
 		if ($cur.Contains('order')) { return $null }
 		if ($cur.Contains('filter')) { return $null }
+		if ($cur.Contains('viewMode')) { return $null }
+		if ($cur.Contains('itemsViewMode')) { return $null }
 		$gfs = $cur['groupFields']
 		if ($null -eq $gfs -or $gfs.Count -eq 0) {
 			# details level (terminal)
@@ -1953,10 +1983,24 @@ foreach ($sv in $svNodes) {
 	$settingsNode = $sv.SelectSingleNode("dcsset:settings", $ns)
 	$settings = [ordered]@{}
 
+	# Helper: read block-level <dcsset:viewMode> (direct child, not item-level)
+	function Get-BlockVM($node) {
+		if (-not $node) { return $null }
+		foreach ($child in $node.ChildNodes) {
+			if ($child.NodeType -eq 'Element' -and $child.LocalName -eq 'viewMode' -and $child.NamespaceURI -eq 'http://v8.1c.ru/8.1/data-composition-system/settings') {
+				return $child.InnerText
+			}
+		}
+		return $null
+	}
+
 	# selection (top-level)
 	$selTop = $settingsNode.SelectSingleNode("dcsset:selection", $ns)
 	$selItems = Build-Selection -selNode $selTop -loc "variant[$vi]/selection"
 	if ($selItems.Count -gt 0) { $settings['selection'] = $selItems }
+	# Block-level viewMode: preserve exact presence (even Normal) for bit-perfect round-trip
+	$svm = Get-BlockVM $selTop
+	if ($null -ne $svm) { $settings['selectionViewMode'] = $svm }
 
 	# filter
 	$fTop = $settingsNode.SelectSingleNode("dcsset:filter", $ns)
@@ -1965,11 +2009,15 @@ foreach ($sv in $svNodes) {
 		foreach ($fc in $fTop.SelectNodes("dcsset:item", $ns)) { $fa += (Build-FilterItem -itemNode $fc -loc "variant[$vi]/filter") }
 		$settings['filter'] = $fa
 	}
+	$fvm = Get-BlockVM $fTop
+	if ($null -ne $fvm) { $settings['filterViewMode'] = $fvm }
 
 	# order
 	$ordTop = $settingsNode.SelectSingleNode("dcsset:order", $ns)
 	$ordItems = Build-Order -ordNode $ordTop -loc "variant[$vi]/order"
 	if ($ordItems.Count -gt 0) { $settings['order'] = $ordItems }
+	$ovm = Get-BlockVM $ordTop
+	if ($null -ne $ovm) { $settings['orderViewMode'] = $ovm }
 
 	# conditionalAppearance
 	$caTop = $settingsNode.SelectSingleNode("dcsset:conditionalAppearance", $ns)
@@ -1977,6 +2025,8 @@ foreach ($sv in $svNodes) {
 		$ca = Build-ConditionalAppearance -caNode $caTop -loc "variant[$vi]/ca"
 		if ($ca.Count -gt 0) { $settings['conditionalAppearance'] = $ca }
 	}
+	$cavm = Get-BlockVM $caTop
+	if ($null -ne $cavm) { $settings['conditionalAppearanceViewMode'] = $cavm }
 
 	# outputParameters
 	$opTop = $settingsNode.SelectSingleNode("dcsset:outputParameters", $ns)
@@ -1995,6 +2045,10 @@ foreach ($sv in $svNodes) {
 		if ($short) { $settings['structure'] = $short }
 		else        { $settings['structure'] = $structItems }
 	}
+
+	# <dcsset:itemsViewMode> on settings — preserve presence (even Normal)
+	$sivmNode = $settingsNode.SelectSingleNode("dcsset:itemsViewMode", $ns)
+	if ($sivmNode) { $settings['itemsViewMode'] = $sivmNode.InnerText }
 
 	# Skip pure-default variants: settings contains only "details" structure (or nothing) +
 	# name=Основной + no distinctive title.

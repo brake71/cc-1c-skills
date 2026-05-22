@@ -17,5 +17,6 @@
         { "field": "СВыражениемПредставления", "type": "CatalogRef.Номенклатура", "presentationExpression": "Представление(СВыражениемПредставления)" }
       ]
     }
-  ]
+  ],
+  "settingsVariants": [{ "name": "Основной", "settings": { "structure": [{ "selection": ["Auto"], "order": ["Auto"] }] } }]
 }

@@ -8,5 +8,6 @@
     "СписокДокументов: CatalogRef.Документы @valueList",
     "СлужебныйПар: string @hidden",
     { "name": "ПорядокОкругления", "type": "EnumRef.Округления", "value": "Перечисление.Округления.Окр1", "availableValues": [{ "value": "Перечисление.Округления.Окр1_00", "presentation": "руб. коп" }, { "value": "Перечисление.Округления.Окр1", "presentation": "руб." }] }
-  ]
+  ],
+  "settingsVariants": [{ "name": "Основной", "settings": { "structure": [{ "selection": ["Auto"], "order": ["Auto"] }] } }]
 }

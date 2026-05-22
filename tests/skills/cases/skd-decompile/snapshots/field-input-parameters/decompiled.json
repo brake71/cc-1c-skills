@@ -9,5 +9,6 @@
         { "field": "ПростоЕА", "type": "CatalogRef.Сотрудники", "inputParameters": [{ "parameter": "ПараметрыВыбора", "choiceParameters": [] }, { "parameter": "БыстрыйВыбор", "use": false, "value": true }] }
       ]
     }
-  ]
+  ],
+  "settingsVariants": [{ "name": "Основной", "settings": { "structure": [{ "selection": ["Auto"], "order": ["Auto"] }] } }]
 }
