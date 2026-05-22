@@ -1,4 +1,4 @@
-﻿# skd-compile v1.46 — Compile 1C DCS from JSON
+﻿# skd-compile v1.47 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -1994,8 +1994,30 @@ function Emit-FilterItem {
 	if (-not $compType) { $compType = "$($item.op)" }
 	X "$indent`t<dcsset:comparisonType>$(Esc-Xml $compType)</dcsset:comparisonType>"
 
-	# Right value
-	if ($null -ne $item.value) {
+	# Right value: один, несколько (InList) или ValueListType (пустой list-placeholder)
+	$valIsArray = ($item.value -is [array]) -or ($item.value -is [System.Collections.IList] -and $item.value -isnot [string])
+	if ($valIsArray) {
+		# Пустой массив → пустой ValueListType placeholder
+		if (@($item.value).Count -eq 0) {
+			X "$indent`t<dcsset:right xsi:type=`"v8:ValueListType`">"
+			X "$indent`t`t<v8:valueType/>"
+			X "$indent`t`t<v8:lastId xsi:type=`"xs:decimal`">-1</v8:lastId>"
+			X "$indent`t</dcsset:right>"
+		} else {
+			# Несколько <right> подряд (multi-value InList)
+			foreach ($v in $item.value) {
+				$vt = if ($item.valueType) { "$($item.valueType)" } else { "" }
+				if (-not $vt) {
+					if ($v -is [bool]) { $vt = 'xs:boolean' }
+					elseif ($v -is [int] -or $v -is [long] -or $v -is [double]) { $vt = 'xs:decimal' }
+					elseif ("$v" -match '^\d{4}-\d{2}-\d{2}T') { $vt = 'xs:dateTime' }
+					else { $vt = 'xs:string' }
+				}
+				$vStr = if ($v -is [bool]) { "$v".ToLower() } else { Esc-Xml "$v" }
+				X "$indent`t<dcsset:right xsi:type=`"$vt`">$vStr</dcsset:right>"
+			}
+		}
+	} elseif ($null -ne $item.value) {
 		$vt = if ($item.valueType) { "$($item.valueType)" } else { "" }
 		if (-not $vt) {
 			$v = $item.value

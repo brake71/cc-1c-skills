@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.46 — Compile 1C DCS from JSON
+# skd-compile v1.47 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1658,11 +1658,34 @@ def emit_filter_item(lines, item, indent):
     comp_type = COMPARISON_TYPES.get(str(item.get('op', '')), str(item.get('op', '')))
     lines.append(f'{indent}\t<dcsset:comparisonType>{esc_xml(comp_type)}</dcsset:comparisonType>')
 
-    # Right value
-    if item.get('value') is not None:
+    # Right value: один, несколько (InList) или ValueListType (пустой list-placeholder)
+    val = item.get('value')
+    val_is_array = isinstance(val, list)
+    if val_is_array:
+        if len(val) == 0:
+            # Пустой массив → пустой ValueListType placeholder
+            lines.append(f'{indent}\t<dcsset:right xsi:type="v8:ValueListType">')
+            lines.append(f'{indent}\t\t<v8:valueType/>')
+            lines.append(f'{indent}\t\t<v8:lastId xsi:type="xs:decimal">-1</v8:lastId>')
+            lines.append(f'{indent}\t</dcsset:right>')
+        else:
+            for v in val:
+                vt = str(item.get('valueType', '')) if item.get('valueType') else ''
+                if not vt:
+                    if isinstance(v, bool):
+                        vt = 'xs:boolean'
+                    elif isinstance(v, (int, float)):
+                        vt = 'xs:decimal'
+                    elif re.match(r'^\d{4}-\d{2}-\d{2}T', str(v)):
+                        vt = 'xs:dateTime'
+                    else:
+                        vt = 'xs:string'
+                v_str = str(v).lower() if isinstance(v, bool) else esc_xml(str(v))
+                lines.append(f'{indent}\t<dcsset:right xsi:type="{vt}">{v_str}</dcsset:right>')
+    elif val is not None:
         vt = str(item.get('valueType', '')) if item.get('valueType') else ''
         if not vt:
-            v = item['value']
+            v = val
             if isinstance(v, bool):
                 vt = 'xs:boolean'
             elif isinstance(v, (int, float)):
@@ -1671,10 +1694,10 @@ def emit_filter_item(lines, item, indent):
                 vt = 'xs:dateTime'
             else:
                 vt = 'xs:string'
-        if isinstance(item['value'], bool):
-            v_str = str(item['value']).lower()
+        if isinstance(val, bool):
+            v_str = str(val).lower()
         else:
-            v_str = esc_xml(str(item['value']))
+            v_str = esc_xml(str(val))
         lines.append(f'{indent}\t<dcsset:right xsi:type="{vt}">{v_str}</dcsset:right>')
 
     if item.get('presentation'):
