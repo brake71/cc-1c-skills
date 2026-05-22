@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.36 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.37 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1313,8 +1313,12 @@ function Build-FilterItem {
 			$items += (Build-FilterItem -itemNode $c -loc "$loc/item")
 		}
 		$gObj = [ordered]@{ group = $groupName; items = $items }
-		$gPres = Get-Text $itemNode "dcsset:presentation"
-		if ($gPres) { $gObj['presentation'] = $gPres }
+		$gPresNode = $itemNode.SelectSingleNode("dcsset:presentation", $ns)
+		if ($gPresNode) {
+			$gPres = Get-MLText $gPresNode
+			if (-not $gPres) { $gPres = $gPresNode.InnerText }
+			if ($gPres) { $gObj['presentation'] = $gPres }
+		}
 		# viewMode: сохраняем даже Normal если node присутствует (для bit-perfect)
 		$gVMNode = $itemNode.SelectSingleNode("dcsset:viewMode", $ns)
 		if ($gVMNode) { $gObj['viewMode'] = $gVMNode.InnerText }
@@ -1562,8 +1566,12 @@ function Build-ConditionalAppearance {
 		$appNode = $it.SelectSingleNode("dcsset:appearance", $ns)
 		$ap = Get-SettingsAppearance $appNode
 		if ($ap -and $ap.Count -gt 0) { $entry['appearance'] = $ap }
-		$pres = Get-Text $it "dcsset:presentation"
-		if ($pres) { $entry['presentation'] = $pres }
+		$presNode = $it.SelectSingleNode("dcsset:presentation", $ns)
+		if ($presNode) {
+			$pres = Get-MLText $presNode
+			if (-not $pres) { $pres = $presNode.InnerText }
+			if ($pres) { $entry['presentation'] = $pres }
+		}
 		$vmN = $it.SelectSingleNode("dcsset:viewMode", $ns)
 		if ($vmN) { $entry['viewMode'] = $vmN.InnerText }
 		$usid = Get-Text $it "dcsset:userSettingID"
