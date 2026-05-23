@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.56 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.57 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1894,6 +1894,9 @@ function Build-TableAxisBlock {
 		$ausPres = Get-MLText $ausPresNode
 		if ($ausPres) { $entry['userSettingPresentation'] = $ausPres }
 	}
+	# itemsViewMode на axis (column/row/point/series)
+	$aivmNode = $node.SelectSingleNode("dcsset:itemsViewMode", $ns)
+	if ($aivmNode) { $entry['itemsViewMode'] = $aivmNode.InnerText }
 	return $entry
 }
 

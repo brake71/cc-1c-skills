@@ -1,4 +1,4 @@
-﻿# skd-compile v1.73 — Compile 1C DCS from JSON
+﻿# skd-compile v1.74 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -2774,6 +2774,9 @@ function Emit-TableAxisBlock {
 	}
 	if ($block.userSettingPresentation) {
 		Emit-MLText -tag "dcsset:userSettingPresentation" -text $block.userSettingPresentation -indent $indent
+	}
+	if ($block.itemsViewMode) {
+		X "$indent<dcsset:itemsViewMode>$(Esc-Xml "$($block.itemsViewMode)")</dcsset:itemsViewMode>"
 	}
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.73 — Compile 1C DCS from JSON
+# skd-compile v1.74 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -2244,6 +2244,8 @@ def emit_table_axis_block(lines, block, indent, emit_name=True):
         lines.append(f'{indent}<dcsset:userSettingID>{esc_xml(uid)}</dcsset:userSettingID>')
     if block.get('userSettingPresentation'):
         emit_mltext(lines, indent, 'dcsset:userSettingPresentation', block['userSettingPresentation'])
+    if block.get('itemsViewMode'):
+        lines.append(f'{indent}<dcsset:itemsViewMode>{esc_xml(str(block["itemsViewMode"]))}</dcsset:itemsViewMode>')
 
 
 def emit_structure_item(lines, item, indent):
