@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.63 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.65 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1985,6 +1985,17 @@ function Build-Structure {
 				$tCa = Build-ConditionalAppearance -caNode $tCaN -loc "$loc/$idx/ca"
 				if ($tCa.Count -gt 0) { $entry['conditionalAppearance'] = $tCa }
 			}
+			# viewMode / userSettingID / userSettingPresentation на самой таблице (direct child)
+			foreach ($ch in $it.ChildNodes) {
+				if ($ch.NodeType -ne 'Element' -or $ch.NamespaceURI -ne 'http://v8.1c.ru/8.1/data-composition-system/settings') { continue }
+				if ($ch.LocalName -eq 'viewMode' -and -not $entry.Contains('viewMode')) { $entry['viewMode'] = $ch.InnerText }
+				elseif ($ch.LocalName -eq 'userSettingID' -and -not $entry.Contains('userSettingID')) { $entry['userSettingID'] = 'auto' }
+				elseif ($ch.LocalName -eq 'userSettingPresentation' -and -not $entry.Contains('userSettingPresentation')) {
+					$uspV = Get-MLText $ch
+					if ($uspV) { $entry['userSettingPresentation'] = $uspV }
+				}
+				elseif ($ch.LocalName -eq 'itemsViewMode' -and -not $entry.Contains('itemsViewMode')) { $entry['itemsViewMode'] = $ch.InnerText }
+			}
 			$items += $entry
 			$idx++
 			continue
@@ -2427,6 +2438,17 @@ foreach ($sv in $svNodes) {
 		return $null
 	}
 
+	# Block-level userSettingID (direct child of selection/filter/order/conditionalAppearance).
+	function Get-BlockUSID($node) {
+		if (-not $node) { return $null }
+		foreach ($child in $node.ChildNodes) {
+			if ($child.NodeType -eq 'Element' -and $child.LocalName -eq 'userSettingID' -and $child.NamespaceURI -eq 'http://v8.1c.ru/8.1/data-composition-system/settings') {
+				return $child.InnerText
+			}
+		}
+		return $null
+	}
+
 	# userFields — пользовательские вычисляемые поля (Expression / Case)
 	$ufNode = $settingsNode.SelectSingleNode("dcsset:userFields", $ns)
 	if ($ufNode) {
@@ -2500,9 +2522,11 @@ foreach ($sv in $svNodes) {
 	$selTop = $settingsNode.SelectSingleNode("dcsset:selection", $ns)
 	$selItems = Build-Selection -selNode $selTop -loc "variant[$vi]/selection"
 	if ($selItems.Count -gt 0) { $settings['selection'] = $selItems }
-	# Block-level viewMode: preserve exact presence (even Normal) for bit-perfect round-trip
+	# Block-level viewMode/userSettingID: preserve exact presence (even Normal) for bit-perfect
 	$svm = Get-BlockVM $selTop
 	if ($null -ne $svm) { $settings['selectionViewMode'] = $svm }
+	$susid = Get-BlockUSID $selTop
+	if ($susid) { $settings['selectionUserSettingID'] = 'auto' }
 
 	# filter
 	$fTop = $settingsNode.SelectSingleNode("dcsset:filter", $ns)
@@ -2513,6 +2537,8 @@ foreach ($sv in $svNodes) {
 	}
 	$fvm = Get-BlockVM $fTop
 	if ($null -ne $fvm) { $settings['filterViewMode'] = $fvm }
+	$fusid = Get-BlockUSID $fTop
+	if ($fusid) { $settings['filterUserSettingID'] = 'auto' }
 
 	# order
 	$ordTop = $settingsNode.SelectSingleNode("dcsset:order", $ns)
@@ -2520,6 +2546,8 @@ foreach ($sv in $svNodes) {
 	if ($ordItems.Count -gt 0) { $settings['order'] = $ordItems }
 	$ovm = Get-BlockVM $ordTop
 	if ($null -ne $ovm) { $settings['orderViewMode'] = $ovm }
+	$ousid = Get-BlockUSID $ordTop
+	if ($ousid) { $settings['orderUserSettingID'] = 'auto' }
 
 	# conditionalAppearance
 	$caTop = $settingsNode.SelectSingleNode("dcsset:conditionalAppearance", $ns)
@@ -2529,6 +2557,8 @@ foreach ($sv in $svNodes) {
 	}
 	$cavm = Get-BlockVM $caTop
 	if ($null -ne $cavm) { $settings['conditionalAppearanceViewMode'] = $cavm }
+	$causid = Get-BlockUSID $caTop
+	if ($causid) { $settings['conditionalAppearanceUserSettingID'] = 'auto' }
 
 	# outputParameters
 	$opTop = $settingsNode.SelectSingleNode("dcsset:outputParameters", $ns)

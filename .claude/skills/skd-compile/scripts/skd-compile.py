@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.77 — Compile 1C DCS from JSON
+# skd-compile v1.79 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1641,7 +1641,7 @@ def emit_selection_item(lines, item, indent):
     lines.append(f'{indent}</dcsset:item>')
 
 
-def emit_selection(lines, items, indent, skip_auto=False, block_view_mode=None):
+def emit_selection(lines, items, indent, skip_auto=False, block_view_mode=None, block_user_setting_id=None):
     if not items or len(items) == 0:
         return
     lines.append(f'{indent}<dcsset:selection>')
@@ -1651,6 +1651,9 @@ def emit_selection(lines, items, indent, skip_auto=False, block_view_mode=None):
         emit_selection_item(lines, item, f'{indent}\t')
     if block_view_mode is not None:
         lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml(str(block_view_mode))}</dcsset:viewMode>')
+    if block_user_setting_id is not None:
+        uid = new_uuid() if str(block_user_setting_id) == 'auto' else str(block_user_setting_id)
+        lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml(uid)}</dcsset:userSettingID>')
     lines.append(f'{indent}</dcsset:selection>')
 
 
@@ -1764,7 +1767,7 @@ def emit_filter_item(lines, item, indent):
     lines.append(f'{indent}</dcsset:item>')
 
 
-def emit_filter(lines, items, indent, block_view_mode=None):
+def emit_filter(lines, items, indent, block_view_mode=None, block_user_setting_id=None):
     if not items or len(items) == 0:
         return
 
@@ -1791,6 +1794,9 @@ def emit_filter(lines, items, indent, block_view_mode=None):
             emit_filter_item(lines, item, f'{indent}\t')
     if block_view_mode is not None:
         lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml(str(block_view_mode))}</dcsset:viewMode>')
+    if block_user_setting_id is not None:
+        uid = new_uuid() if str(block_user_setting_id) == 'auto' else str(block_user_setting_id)
+        lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml(uid)}</dcsset:userSettingID>')
     lines.append(f'{indent}</dcsset:filter>')
 
 
@@ -1895,7 +1901,7 @@ def emit_appearance_value(lines, key, val, indent):
     lines.append(f'{indent}</dcscor:item>')
 
 
-def emit_conditional_appearance(lines, items, indent, block_view_mode=None):
+def emit_conditional_appearance(lines, items, indent, block_view_mode=None, block_user_setting_id=None):
     if not items or len(items) == 0:
         return
 
@@ -1964,6 +1970,9 @@ def emit_conditional_appearance(lines, items, indent, block_view_mode=None):
         lines.append(f'{indent}\t</dcsset:item>')
     if block_view_mode is not None:
         lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml(str(block_view_mode))}</dcsset:viewMode>')
+    if block_user_setting_id is not None:
+        uid = new_uuid() if str(block_user_setting_id) == 'auto' else str(block_user_setting_id)
+        lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml(uid)}</dcsset:userSettingID>')
     lines.append(f'{indent}</dcsset:conditionalAppearance>')
 
 
@@ -2334,6 +2343,16 @@ def emit_structure_item(lines, item, indent):
             emit_conditional_appearance(lines, item['conditionalAppearance'], f'{indent}\t')
         if item.get('outputParameters'):
             emit_output_parameters(lines, item['outputParameters'], f'{indent}\t')
+        # viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой таблице
+        if item.get('viewMode'):
+            lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml(str(item["viewMode"]))}</dcsset:viewMode>')
+        if item.get('userSettingID'):
+            gid = new_uuid() if str(item['userSettingID']) == 'auto' else str(item['userSettingID'])
+            lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml(gid)}</dcsset:userSettingID>')
+        if item.get('userSettingPresentation'):
+            emit_mltext(lines, f'{indent}\t', 'dcsset:userSettingPresentation', item['userSettingPresentation'])
+        if item.get('itemsViewMode'):
+            lines.append(f'{indent}\t<dcsset:itemsViewMode>{esc_xml(str(item["itemsViewMode"]))}</dcsset:itemsViewMode>')
 
         lines.append(f'{indent}</dcsset:item>')
 
@@ -2407,7 +2426,10 @@ def emit_settings_variants(lines, defn):
 
         s = v.get('settings', {})
 
-        # Helper: resolve XViewMode from settings — emit only if explicitly set
+        # Helper: resolve XViewMode/XUserSettingID from settings — emit only if explicitly set
+        def _block_usid(key):
+            prop = f'{key}UserSettingID'
+            return str(s[prop]) if prop in s else None
         def _block_vm(key):
             prop = f'{key}ViewMode'
             if prop in s:
@@ -2420,19 +2442,19 @@ def emit_settings_variants(lines, defn):
 
         # Selection
         if s.get('selection'):
-            emit_selection(lines, s['selection'], '\t\t\t', skip_auto=True, block_view_mode=_block_vm('selection'))
+            emit_selection(lines, s['selection'], '\t\t\t', skip_auto=True, block_view_mode=_block_vm('selection'), block_user_setting_id=_block_usid('selection'))
 
         # Filter
         if s.get('filter'):
-            emit_filter(lines, s['filter'], '\t\t\t', block_view_mode=_block_vm('filter'))
+            emit_filter(lines, s['filter'], '\t\t\t', block_view_mode=_block_vm('filter'), block_user_setting_id=_block_usid('filter'))
 
         # Order
         if s.get('order'):
-            emit_order(lines, s['order'], '\t\t\t', skip_auto=True, block_view_mode=_block_vm('order'))
+            emit_order(lines, s['order'], '\t\t\t', skip_auto=True, block_view_mode=_block_vm('order'), block_user_setting_id=_block_usid('order'))
 
         # ConditionalAppearance
         if s.get('conditionalAppearance'):
-            emit_conditional_appearance(lines, s['conditionalAppearance'], '\t\t\t', block_view_mode=_block_vm('conditionalAppearance'))
+            emit_conditional_appearance(lines, s['conditionalAppearance'], '\t\t\t', block_view_mode=_block_vm('conditionalAppearance'), block_user_setting_id=_block_usid('conditionalAppearance'))
 
         # OutputParameters (platform does NOT emit <viewMode> on this block)
         if s.get('outputParameters'):

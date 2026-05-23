@@ -1,4 +1,4 @@
-﻿# skd-compile v1.77 — Compile 1C DCS from JSON
+﻿# skd-compile v1.79 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -1982,7 +1982,7 @@ function Emit-SelectionItem {
 }
 
 function Emit-Selection {
-	param($items, [string]$indent, [switch]$skipAuto, $blockViewMode = $null)
+	param($items, [string]$indent, [switch]$skipAuto, $blockViewMode = $null, $blockUserSettingID = $null)
 
 	if (-not $items -or $items.Count -eq 0) { return }
 
@@ -1993,6 +1993,10 @@ function Emit-Selection {
 	}
 	if ($null -ne $blockViewMode) {
 		X "$indent`t<dcsset:viewMode>$(Esc-Xml "$blockViewMode")</dcsset:viewMode>"
+	}
+	if ($null -ne $blockUserSettingID) {
+		$uid = if ("$blockUserSettingID" -eq 'auto') { New-Guid-String } else { "$blockUserSettingID" }
+		X "$indent`t<dcsset:userSettingID>$(Esc-Xml $uid)</dcsset:userSettingID>"
 	}
 	X "$indent</dcsset:selection>"
 }
@@ -2124,7 +2128,7 @@ function Emit-FilterItem {
 }
 
 function Emit-Filter {
-	param($items, [string]$indent, $blockViewMode = $null)
+	param($items, [string]$indent, $blockViewMode = $null, $blockUserSettingID = $null)
 
 	if (-not $items -or $items.Count -eq 0) { return }
 
@@ -2158,6 +2162,10 @@ function Emit-Filter {
 	}
 	if ($null -ne $blockViewMode) {
 		X "$indent`t<dcsset:viewMode>$(Esc-Xml "$blockViewMode")</dcsset:viewMode>"
+	}
+	if ($null -ne $blockUserSettingID) {
+		$uid = if ("$blockUserSettingID" -eq 'auto') { New-Guid-String } else { "$blockUserSettingID" }
+		X "$indent`t<dcsset:userSettingID>$(Esc-Xml $uid)</dcsset:userSettingID>"
 	}
 	X "$indent</dcsset:filter>"
 }
@@ -2293,7 +2301,7 @@ function Emit-AppearanceValue {
 }
 
 function Emit-ConditionalAppearance {
-	param($items, [string]$indent, $blockViewMode = $null)
+	param($items, [string]$indent, $blockViewMode = $null, $blockUserSettingID = $null)
 
 	if (-not $items -or $items.Count -eq 0) { return }
 
@@ -2380,6 +2388,10 @@ function Emit-ConditionalAppearance {
 	}
 	if ($null -ne $blockViewMode) {
 		X "$indent`t<dcsset:viewMode>$(Esc-Xml "$blockViewMode")</dcsset:viewMode>"
+	}
+	if ($null -ne $blockUserSettingID) {
+		$uid = if ("$blockUserSettingID" -eq 'auto') { New-Guid-String } else { "$blockUserSettingID" }
+		X "$indent`t<dcsset:userSettingID>$(Esc-Xml $uid)</dcsset:userSettingID>"
 	}
 	X "$indent</dcsset:conditionalAppearance>"
 }
@@ -2894,6 +2906,20 @@ function Emit-StructureItem {
 		if ($item.outputParameters) {
 			Emit-OutputParameters -params $item.outputParameters -indent "$indent`t"
 		}
+		# viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой таблице
+		if ($item.viewMode) {
+			X "$indent`t<dcsset:viewMode>$(Esc-Xml "$($item.viewMode)")</dcsset:viewMode>"
+		}
+		if ($item.userSettingID) {
+			$gid = if ("$($item.userSettingID)" -eq "auto") { New-Guid-String } else { "$($item.userSettingID)" }
+			X "$indent`t<dcsset:userSettingID>$(Esc-Xml $gid)</dcsset:userSettingID>"
+		}
+		if ($item.userSettingPresentation) {
+			Emit-MLText -tag "dcsset:userSettingPresentation" -text $item.userSettingPresentation -indent "$indent`t"
+		}
+		if ($item.itemsViewMode) {
+			X "$indent`t<dcsset:itemsViewMode>$(Esc-Xml "$($item.itemsViewMode)")</dcsset:itemsViewMode>"
+		}
 
 		X "$indent</dcsset:item>"
 	}
@@ -2989,9 +3015,14 @@ function Emit-SettingsVariants {
 
 		$s = $v.settings
 
-		# Helper: resolve XViewMode from settings — emit only if explicitly set
+		# Helper: resolve XViewMode/XUserSettingID from settings — emit only if explicitly set
 		function Get-BlockVM([string]$key) {
 			$prop = "${key}ViewMode"
+			if ($s.PSObject.Properties[$prop]) { return "$($s.$prop)" }
+			return $null
+		}
+		function Get-BlockUSID([string]$key) {
+			$prop = "${key}UserSettingID"
 			if ($s.PSObject.Properties[$prop]) { return "$($s.$prop)" }
 			return $null
 		}
@@ -3003,22 +3034,22 @@ function Emit-SettingsVariants {
 
 		# Selection (Auto items only belong at group level, not top-level settings)
 		if ($s.selection) {
-			Emit-Selection -items $s.selection -indent "`t`t`t" -skipAuto -blockViewMode (Get-BlockVM 'selection')
+			Emit-Selection -items $s.selection -indent "`t`t`t" -skipAuto -blockViewMode (Get-BlockVM 'selection') -blockUserSettingID (Get-BlockUSID 'selection')
 		}
 
 		# Filter
 		if ($s.filter) {
-			Emit-Filter -items $s.filter -indent "`t`t`t" -blockViewMode (Get-BlockVM 'filter')
+			Emit-Filter -items $s.filter -indent "`t`t`t" -blockViewMode (Get-BlockVM 'filter') -blockUserSettingID (Get-BlockUSID 'filter')
 		}
 
 		# Order (Auto items only belong at group level, not top-level settings)
 		if ($s.order) {
-			Emit-Order -items $s.order -indent "`t`t`t" -skipAuto -blockViewMode (Get-BlockVM 'order')
+			Emit-Order -items $s.order -indent "`t`t`t" -skipAuto -blockViewMode (Get-BlockVM 'order') -blockUserSettingID (Get-BlockUSID 'order')
 		}
 
 		# ConditionalAppearance
 		if ($s.conditionalAppearance) {
-			Emit-ConditionalAppearance -items $s.conditionalAppearance -indent "`t`t`t" -blockViewMode (Get-BlockVM 'conditionalAppearance')
+			Emit-ConditionalAppearance -items $s.conditionalAppearance -indent "`t`t`t" -blockViewMode (Get-BlockVM 'conditionalAppearance') -blockUserSettingID (Get-BlockUSID 'conditionalAppearance')
 		}
 
 		# OutputParameters (platform does NOT emit <viewMode> on this block)
