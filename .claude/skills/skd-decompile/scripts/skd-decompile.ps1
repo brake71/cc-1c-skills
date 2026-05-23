@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.62 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.63 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -863,6 +863,8 @@ function Render-Parameter {
 	if ($p.valueListAllowed) { $obj['valueListAllowed'] = $true }
 	if ($p.autoDates) { $obj['autoDates'] = $true }
 	if ($p.expression) { $obj['expression'] = $p.expression }
+	# useRestriction явно эмитится только если: true И НЕ покрыт hidden/autoDates (compile auto-emit).
+	if ($p.useRestriction -and -not $p.hidden -and -not $p.autoDates) { $obj['useRestriction'] = $true }
 	if ($p.availableValues -and $p.availableValues.Count -gt 0) { $obj['availableValues'] = $p.availableValues }
 	if ($p.inputParameters) { $obj['inputParameters'] = $p.inputParameters }
 	return $obj
