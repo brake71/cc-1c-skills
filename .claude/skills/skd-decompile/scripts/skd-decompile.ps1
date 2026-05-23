@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.55 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.56 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -824,6 +824,15 @@ function Render-Parameter {
 	if ($p.expression) { $needsObject = $true }
 	if ($p.notAField) { $needsObject = $true }
 
+	# valueIsNil на non-композитном типе требует object form, чтобы compile
+	# знал что вместо xs:string/xs:decimal-default нужно эмитить xsi:nil="true".
+	# Для ref-типов compile в любом случае эмитит nil, шорткод покрывает.
+	$refTypePattern = '^(Catalog|Document|Enum|ChartOfAccounts|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan|CatalogRef|DocumentRef|EnumRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef|ChartOfCalculationTypesRef|BusinessProcessRef|TaskRef|InformationRegisterRef|ExchangePlanRef|AnyRef)'
+	$typeIsRef = $false
+	if ($typeShort -is [string] -and $typeShort -match $refTypePattern) { $typeIsRef = $true }
+	$nilNeedsObject = $valueIsNil -and -not $typeIsRef -and $typeShort -and -not ($typeShort -is [array])
+	if ($nilNeedsObject) { $needsObject = $true }
+
 	if (-not $needsObject) {
 		$s = $name
 		if ($title) { $s += " [$title]" }
@@ -837,6 +846,7 @@ function Render-Parameter {
 	if ($title) { $obj['title'] = $title }
 	if ($typeShort) { $obj['type'] = $typeShort }
 	if (-not $valueIsNil -and $null -ne $valueDisplay -and $valueDisplay -ne '') { $obj['value'] = $valueDisplay }
+	if ($nilNeedsObject) { $obj['nilValue'] = $true }
 	if ($p.useAttr -and -not $p.autoDates) { $obj['use'] = $p.useAttr }
 	if ($p.denyIncomplete -and -not $p.autoDates) { $obj['denyIncompleteValues'] = $true }
 	if ($p.hidden) { $obj['hidden'] = $true }

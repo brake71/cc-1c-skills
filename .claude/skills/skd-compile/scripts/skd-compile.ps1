@@ -1,4 +1,4 @@
-﻿# skd-compile v1.72 — Compile 1C DCS from JSON
+﻿# skd-compile v1.73 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -1273,6 +1273,9 @@ function Emit-SingleParam {
 		if (Test-EmptyValue $parsed.value) {
 			if (-not $vla) { X "`t`t<value xsi:nil=`"true`"/>" }
 		}
+	} elseif ($parsed.nilValue -eq $true) {
+		# Принудительный xsi:nil даже когда тип известен (для bit-perfect round-trip).
+		if (-not $vla) { X "`t`t<value xsi:nil=`"true`"/>" }
 	} else {
 		Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t" -valueListAllowed $vla
 	}
@@ -1379,6 +1382,7 @@ function Emit-Parameters {
 			if ($p.valueListAllowed -eq $true) { $parsed.valueListAllowed = $true }
 			if ($p.hidden -eq $true) { $parsed.hidden = $true }
 			if ($p.autoDates -eq $true) { $parsed.autoDates = $true }
+			if ($p.nilValue -eq $true) { $parsed.nilValue = $true }
 		}
 
 		# @autoDates implies use=Always + denyIncompleteValues=true by default

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.72 — Compile 1C DCS from JSON
+# skd-compile v1.73 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1086,6 +1086,10 @@ def emit_single_param(lines, p, parsed):
         if is_empty_value(parsed.get('value')):
             if not vla:
                 lines.append('\t\t<value xsi:nil="true"/>')
+    elif parsed.get('nilValue') is True:
+        # Принудительный xsi:nil даже когда тип известен (для bit-perfect round-trip).
+        if not vla:
+            lines.append('\t\t<value xsi:nil="true"/>')
     else:
         emit_param_value(lines, p_type, parsed.get('value'), '\t\t', vla)
 
@@ -1192,6 +1196,8 @@ def emit_parameters(lines, defn):
                 parsed['hidden'] = True
             if p.get('autoDates') is True:
                 parsed['autoDates'] = True
+            if p.get('nilValue') is True:
+                parsed['nilValue'] = True
 
         # @autoDates implies use=Always + denyIncompleteValues=true by default
         # (derived &НачалоПериода/&КонецПериода need a populated period).
