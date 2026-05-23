@@ -1,4 +1,4 @@
-﻿# skd-compile v1.82 — Compile 1C DCS from JSON
+﻿# skd-compile v1.83 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -2811,10 +2811,11 @@ function Emit-TableAxisBlock {
 	if ($block.outputParameters) {
 		Emit-OutputParameters -params $block.outputParameters -indent $indent
 	}
-	# nested children (StructureItemGroup внутри table row/column или chart axis)
+	# nested children (StructureItemGroup внутри table row/column или chart axis).
+	# Platform-pattern: items внутри row/column/points/series — ВСЕГДА short form (без xsi:type).
 	if ($block.children) {
 		foreach ($child in $block.children) {
-			Emit-StructureItem -item $child -indent $indent
+			Emit-StructureItem -item $child -indent $indent -shortGroup
 		}
 	}
 	if ($block.viewMode) {
@@ -2833,12 +2834,18 @@ function Emit-TableAxisBlock {
 }
 
 function Emit-StructureItem {
-	param($item, [string]$indent)
+	param($item, [string]$indent, [switch]$shortGroup)
 
 	$type = if ($item.type) { "$($item.type)" } else { "group" }
 
 	if ($type -eq "group") {
-		X "$indent<dcsset:item xsi:type=`"dcsset:StructureItemGroup`">"
+		# Platform пишет короткую форму (без xsi:type) для groups внутри table row/column,
+		# explicit StructureItemGroup в остальных случаях.
+		if ($shortGroup) {
+			X "$indent<dcsset:item>"
+		} else {
+			X "$indent<dcsset:item xsi:type=`"dcsset:StructureItemGroup`">"
+		}
 
 		# use=false — отключённая ветка структуры
 		if ($item.use -eq $false) {
@@ -2870,10 +2877,15 @@ function Emit-StructureItem {
 			Emit-OutputParameters -params $item.outputParameters -indent "$indent`t"
 		}
 
-		# Nested children
+		# Nested children — наследуем shortGroup от родителя (если родитель в short form,
+		# то и дети остаются short, как делает platform внутри row/column).
 		if ($item.children) {
 			foreach ($child in $item.children) {
-				Emit-StructureItem -item $child -indent "$indent`t"
+				if ($shortGroup) {
+					Emit-StructureItem -item $child -indent "$indent`t" -shortGroup
+				} else {
+					Emit-StructureItem -item $child -indent "$indent`t"
+				}
 			}
 		}
 

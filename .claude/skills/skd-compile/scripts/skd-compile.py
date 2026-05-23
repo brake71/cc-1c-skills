@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.82 — Compile 1C DCS from JSON
+# skd-compile v1.83 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -2268,10 +2268,11 @@ def emit_table_axis_block(lines, block, indent, emit_name=True):
         emit_conditional_appearance(lines, block['conditionalAppearance'], indent)
     if block.get('outputParameters'):
         emit_output_parameters(lines, block['outputParameters'], indent)
-    # nested children (StructureItemGroup внутри table row/column или chart axis)
+    # nested children (StructureItemGroup внутри table row/column или chart axis).
+    # Platform-pattern: items внутри row/column/points/series — ВСЕГДА short form (без xsi:type).
     if block.get('children'):
         for child in block['children']:
-            emit_structure_item(lines, child, indent)
+            emit_structure_item(lines, child, indent, short_group=True)
     if block.get('viewMode'):
         lines.append(f'{indent}<dcsset:viewMode>{esc_xml(str(block["viewMode"]))}</dcsset:viewMode>')
     if block.get('userSettingID'):
@@ -2283,11 +2284,16 @@ def emit_table_axis_block(lines, block, indent, emit_name=True):
         lines.append(f'{indent}<dcsset:itemsViewMode>{esc_xml(str(block["itemsViewMode"]))}</dcsset:itemsViewMode>')
 
 
-def emit_structure_item(lines, item, indent):
+def emit_structure_item(lines, item, indent, short_group=False):
     item_type = str(item.get('type', 'group'))
 
     if item_type == 'group':
-        lines.append(f'{indent}<dcsset:item xsi:type="dcsset:StructureItemGroup">')
+        # Platform пишет короткую форму (без xsi:type) для groups внутри table row/column,
+        # explicit StructureItemGroup в остальных случаях.
+        if short_group:
+            lines.append(f'{indent}<dcsset:item>')
+        else:
+            lines.append(f'{indent}<dcsset:item xsi:type="dcsset:StructureItemGroup">')
 
         if item.get('use') is False:
             lines.append(f'{indent}\t<dcsset:use>false</dcsset:use>')
@@ -2311,10 +2317,10 @@ def emit_structure_item(lines, item, indent):
         if item.get('outputParameters'):
             emit_output_parameters(lines, item['outputParameters'], f'{indent}\t')
 
-        # Nested children
+        # Nested children — наследуем short_group от родителя.
         if item.get('children'):
             for child in item['children']:
-                emit_structure_item(lines, child, f'{indent}\t')
+                emit_structure_item(lines, child, f'{indent}\t', short_group=short_group)
 
         # viewMode/itemsViewMode/userSettingID/userSettingPresentation — context-dependent
         if item.get('viewMode'):
