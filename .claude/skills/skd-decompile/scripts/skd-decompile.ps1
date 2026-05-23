@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.67 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.68 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1817,7 +1817,13 @@ function Build-DataParameters {
 				if ($ed) { $stdPeriodObj['endDate'] = $ed }
 				$canAuto = $false
 			} elseif ($variant) {
+				# Для shorthand эмитим как строку "Period = ThisMonth"; для object form —
+				# объектом {variant: ThisMonth}, чтобы compile сгенерировал <v8:variant>
+				# вместо плоского <value xsi:type="v8:StandardPeriod">ThisMonth</value>.
 				$vDisplay = $variant
+				if ($vmN -or $uspN) {
+					$stdPeriodObj = [ordered]@{ variant = $variant }
+				}
 			}
 		} elseif ($vt -eq 'DesignTimeValue') {
 			$vDisplay = $valNode.InnerText
@@ -1834,6 +1840,7 @@ function Build-DataParameters {
 			$obj = [ordered]@{ parameter = $pn }
 			if ($stdPeriodObj) {
 				$obj['value'] = $stdPeriodObj
+				# valueType не нужен — compile определит StandardPeriod по value.variant
 			} elseif ($null -ne $vDisplay -and $vDisplay -ne '') {
 				# Конвертация для типизированных значений (compile различает по типу JSON)
 				if ($vt -eq 'boolean') { $obj['value'] = ($vDisplay -eq 'true') }
