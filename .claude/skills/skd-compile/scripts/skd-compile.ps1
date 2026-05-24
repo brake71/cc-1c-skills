@@ -1,4 +1,4 @@
-﻿# skd-compile v1.95 — Compile 1C DCS from JSON
+﻿# skd-compile v1.96 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -3097,6 +3097,11 @@ function Emit-StructureItem {
 	elseif ($type -eq "table") {
 		X "$indent<dcsset:item xsi:type=`"dcsset:StructureItemTable`">"
 
+		# use=false — отключённая таблица
+		if ($item.use -eq $false) {
+			X "$indent`t<dcsset:use>false</dcsset:use>"
+		}
+
 		if ($item.name) {
 			X "$indent`t<dcsset:name>$(Esc-Xml "$($item.name)")</dcsset:name>"
 		}
@@ -3129,6 +3134,13 @@ function Emit-StructureItem {
 		if ($item.outputParameters) {
 			Emit-OutputParameters -params $item.outputParameters -indent "$indent`t"
 		}
+		# columnsViewMode / rowsViewMode — axis-level режим доступности (после rows/columns)
+		if ($item.columnsViewMode) {
+			X "$indent`t<dcsset:columnsViewMode>$(Esc-Xml "$($item.columnsViewMode)")</dcsset:columnsViewMode>"
+		}
+		if ($item.rowsViewMode) {
+			X "$indent`t<dcsset:rowsViewMode>$(Esc-Xml "$($item.rowsViewMode)")</dcsset:rowsViewMode>"
+		}
 		# viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой таблице
 		if ($item.viewMode) {
 			X "$indent`t<dcsset:viewMode>$(Esc-Xml "$($item.viewMode)")</dcsset:viewMode>"
@@ -3148,6 +3160,11 @@ function Emit-StructureItem {
 	}
 	elseif ($type -eq "chart") {
 		X "$indent<dcsset:item xsi:type=`"dcsset:StructureItemChart`">"
+
+		# use=false — отключённая диаграмма
+		if ($item.use -eq $false) {
+			X "$indent`t<dcsset:use>false</dcsset:use>"
+		}
 
 		if ($item.name) {
 			X "$indent`t<dcsset:name>$(Esc-Xml "$($item.name)")</dcsset:name>"
@@ -3194,6 +3211,28 @@ function Emit-StructureItem {
 
 		if ($item.outputParameters) {
 			Emit-OutputParameters -params $item.outputParameters -indent "$indent`t"
+		}
+
+		# pointsViewMode / seriesViewMode — axis-level режим доступности (после points/series)
+		if ($item.pointsViewMode) {
+			X "$indent`t<dcsset:pointsViewMode>$(Esc-Xml "$($item.pointsViewMode)")</dcsset:pointsViewMode>"
+		}
+		if ($item.seriesViewMode) {
+			X "$indent`t<dcsset:seriesViewMode>$(Esc-Xml "$($item.seriesViewMode)")</dcsset:seriesViewMode>"
+		}
+		# viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой диаграмме
+		if ($item.viewMode) {
+			X "$indent`t<dcsset:viewMode>$(Esc-Xml "$($item.viewMode)")</dcsset:viewMode>"
+		}
+		if ($item.userSettingID) {
+			$gid = if ("$($item.userSettingID)" -eq "auto") { New-Guid-String } else { "$($item.userSettingID)" }
+			X "$indent`t<dcsset:userSettingID>$(Esc-Xml $gid)</dcsset:userSettingID>"
+		}
+		if ($item.userSettingPresentation) {
+			Emit-MLText -tag "dcsset:userSettingPresentation" -text $item.userSettingPresentation -indent "$indent`t"
+		}
+		if ($item.itemsViewMode) {
+			X "$indent`t<dcsset:itemsViewMode>$(Esc-Xml "$($item.itemsViewMode)")</dcsset:itemsViewMode>"
 		}
 
 		X "$indent</dcsset:item>"

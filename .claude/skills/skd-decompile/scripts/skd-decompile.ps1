@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.78 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.79 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -2212,7 +2212,10 @@ function Build-Structure {
 				$tCa = Build-ConditionalAppearance -caNode $tCaN -loc "$loc/$idx/ca"
 				if ($tCa.Count -gt 0) { $entry['conditionalAppearance'] = $tCa }
 			}
-			# viewMode / userSettingID / userSettingPresentation на самой таблице (direct child)
+			# use=false на самой таблице — отключённая ветка
+			$tUse = Get-Text $it "dcsset:use"
+			if ($tUse -eq 'false') { $entry['use'] = $false }
+			# viewMode / userSettingID / userSettingPresentation / itemsViewMode / rowsViewMode / columnsViewMode на самой таблице
 			foreach ($ch in $it.ChildNodes) {
 				if ($ch.NodeType -ne 'Element' -or $ch.NamespaceURI -ne 'http://v8.1c.ru/8.1/data-composition-system/settings') { continue }
 				if ($ch.LocalName -eq 'viewMode' -and -not $entry.Contains('viewMode')) { $entry['viewMode'] = $ch.InnerText }
@@ -2222,6 +2225,8 @@ function Build-Structure {
 					if ($uspV) { $entry['userSettingPresentation'] = $uspV }
 				}
 				elseif ($ch.LocalName -eq 'itemsViewMode' -and -not $entry.Contains('itemsViewMode')) { $entry['itemsViewMode'] = $ch.InnerText }
+				elseif ($ch.LocalName -eq 'columnsViewMode' -and -not $entry.Contains('columnsViewMode')) { $entry['columnsViewMode'] = $ch.InnerText }
+				elseif ($ch.LocalName -eq 'rowsViewMode' -and -not $entry.Contains('rowsViewMode')) { $entry['rowsViewMode'] = $ch.InnerText }
 			}
 			$items += $entry
 			$idx++
@@ -2293,6 +2298,22 @@ function Build-Structure {
 			$opN = $it.SelectSingleNode("dcsset:outputParameters", $ns)
 			$op = Build-OutputParameters -opNode $opN
 			if ($op -and $op.Count -gt 0) { $entry['outputParameters'] = $op }
+			# use=false на самой диаграмме — отключённая ветка
+			$chUse = Get-Text $it "dcsset:use"
+			if ($chUse -eq 'false') { $entry['use'] = $false }
+			# viewMode / userSettingID / userSettingPresentation / itemsViewMode / pointsViewMode / seriesViewMode на chart
+			foreach ($ch in $it.ChildNodes) {
+				if ($ch.NodeType -ne 'Element' -or $ch.NamespaceURI -ne 'http://v8.1c.ru/8.1/data-composition-system/settings') { continue }
+				if ($ch.LocalName -eq 'viewMode' -and -not $entry.Contains('viewMode')) { $entry['viewMode'] = $ch.InnerText }
+				elseif ($ch.LocalName -eq 'userSettingID' -and -not $entry.Contains('userSettingID')) { $entry['userSettingID'] = 'auto' }
+				elseif ($ch.LocalName -eq 'userSettingPresentation' -and -not $entry.Contains('userSettingPresentation')) {
+					$uspV = Get-MLText $ch
+					if ($uspV) { $entry['userSettingPresentation'] = $uspV }
+				}
+				elseif ($ch.LocalName -eq 'itemsViewMode' -and -not $entry.Contains('itemsViewMode')) { $entry['itemsViewMode'] = $ch.InnerText }
+				elseif ($ch.LocalName -eq 'pointsViewMode' -and -not $entry.Contains('pointsViewMode')) { $entry['pointsViewMode'] = $ch.InnerText }
+				elseif ($ch.LocalName -eq 'seriesViewMode' -and -not $entry.Contains('seriesViewMode')) { $entry['seriesViewMode'] = $ch.InnerText }
+			}
 			$items += $entry
 			$idx++
 			continue

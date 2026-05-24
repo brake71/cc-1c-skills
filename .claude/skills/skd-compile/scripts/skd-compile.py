@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.95 — Compile 1C DCS from JSON
+# skd-compile v1.96 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -2456,6 +2456,10 @@ def emit_structure_item(lines, item, indent, short_group=False):
     elif item_type == 'table':
         lines.append(f'{indent}<dcsset:item xsi:type="dcsset:StructureItemTable">')
 
+        # use=false — отключённая таблица
+        if item.get('use') is False:
+            lines.append(f'{indent}\t<dcsset:use>false</dcsset:use>')
+
         if item.get('name'):
             lines.append(f'{indent}\t<dcsset:name>{esc_xml(str(item["name"]))}</dcsset:name>')
 
@@ -2480,6 +2484,11 @@ def emit_structure_item(lines, item, indent, short_group=False):
             emit_conditional_appearance(lines, item['conditionalAppearance'], f'{indent}\t')
         if item.get('outputParameters'):
             emit_output_parameters(lines, item['outputParameters'], f'{indent}\t')
+        # columnsViewMode / rowsViewMode — axis-level режим доступности
+        if item.get('columnsViewMode'):
+            lines.append(f'{indent}\t<dcsset:columnsViewMode>{esc_xml(str(item["columnsViewMode"]))}</dcsset:columnsViewMode>')
+        if item.get('rowsViewMode'):
+            lines.append(f'{indent}\t<dcsset:rowsViewMode>{esc_xml(str(item["rowsViewMode"]))}</dcsset:rowsViewMode>')
         # viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой таблице
         if item.get('viewMode'):
             lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml(str(item["viewMode"]))}</dcsset:viewMode>')
@@ -2495,6 +2504,10 @@ def emit_structure_item(lines, item, indent, short_group=False):
 
     elif item_type == 'chart':
         lines.append(f'{indent}<dcsset:item xsi:type="dcsset:StructureItemChart">')
+
+        # use=false — отключённая диаграмма
+        if item.get('use') is False:
+            lines.append(f'{indent}\t<dcsset:use>false</dcsset:use>')
 
         if item.get('name'):
             lines.append(f'{indent}\t<dcsset:name>{esc_xml(str(item["name"]))}</dcsset:name>')
@@ -2522,6 +2535,22 @@ def emit_structure_item(lines, item, indent, short_group=False):
 
         if item.get('outputParameters'):
             emit_output_parameters(lines, item['outputParameters'], f'{indent}\t')
+
+        # pointsViewMode / seriesViewMode — axis-level режим доступности
+        if item.get('pointsViewMode'):
+            lines.append(f'{indent}\t<dcsset:pointsViewMode>{esc_xml(str(item["pointsViewMode"]))}</dcsset:pointsViewMode>')
+        if item.get('seriesViewMode'):
+            lines.append(f'{indent}\t<dcsset:seriesViewMode>{esc_xml(str(item["seriesViewMode"]))}</dcsset:seriesViewMode>')
+        # viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой диаграмме
+        if item.get('viewMode'):
+            lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml(str(item["viewMode"]))}</dcsset:viewMode>')
+        if item.get('userSettingID'):
+            gid = new_uuid() if str(item['userSettingID']) == 'auto' else str(item['userSettingID'])
+            lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml(gid)}</dcsset:userSettingID>')
+        if item.get('userSettingPresentation'):
+            emit_mltext(lines, f'{indent}\t', 'dcsset:userSettingPresentation', item['userSettingPresentation'])
+        if item.get('itemsViewMode'):
+            lines.append(f'{indent}\t<dcsset:itemsViewMode>{esc_xml(str(item["itemsViewMode"]))}</dcsset:itemsViewMode>')
 
         lines.append(f'{indent}</dcsset:item>')
 
