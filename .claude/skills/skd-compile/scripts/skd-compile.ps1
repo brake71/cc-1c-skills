@@ -1,4 +1,4 @@
-﻿# skd-compile v1.92 — Compile 1C DCS from JSON
+﻿# skd-compile v1.93 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -2482,6 +2482,55 @@ function Emit-ConditionalAppearance {
 	X "$indent</dcsset:conditionalAppearance>"
 }
 
+# Эмиссия nested sub-item внутри SettingsParameterValue (chart-параметры типа
+# ТипДиаграммы.СоединениеЗначенийПоСериям). Поддерживает use=false и valueType
+# либо строкой ("xs:string", "dN:Foo" если префикс известен в корне), либо
+# объектом {uri, name} — эмитим локальный xmlns на value.
+function Emit-OutputParametersSubItem {
+	param([string]$subName, $subWrap, [string]$indent)
+	$subVal = $subWrap
+	$subVT = 'xs:string'
+	$subUseFalse = $false
+	$subUri = $null
+	$subLocalName = $null
+	if ($subWrap -is [PSCustomObject]) {
+		if ($subWrap.PSObject.Properties['value']) { $subVal = $subWrap.value }
+		if ($subWrap.PSObject.Properties['valueType']) {
+			$vt = $subWrap.valueType
+			if ($vt -is [PSCustomObject] -and $vt.PSObject.Properties['uri']) {
+				$subUri = "$($vt.uri)"; $subLocalName = "$($vt.name)"
+			} elseif ($vt -is [System.Collections.IDictionary] -and $vt.Contains('uri')) {
+				$subUri = "$($vt['uri'])"; $subLocalName = "$($vt['name'])"
+			} else {
+				$subVT = "$vt"
+			}
+		}
+		if ($subWrap.PSObject.Properties['use'] -and $subWrap.use -eq $false) { $subUseFalse = $true }
+	} elseif ($subWrap -is [System.Collections.IDictionary]) {
+		if ($subWrap.Contains('value')) { $subVal = $subWrap['value'] }
+		if ($subWrap.Contains('valueType')) {
+			$vt = $subWrap['valueType']
+			if ($vt -is [PSCustomObject] -and $vt.PSObject.Properties['uri']) {
+				$subUri = "$($vt.uri)"; $subLocalName = "$($vt.name)"
+			} elseif ($vt -is [System.Collections.IDictionary] -and $vt.Contains('uri')) {
+				$subUri = "$($vt['uri'])"; $subLocalName = "$($vt['name'])"
+			} else {
+				$subVT = "$vt"
+			}
+		}
+		if ($subWrap.Contains('use') -and $subWrap['use'] -eq $false) { $subUseFalse = $true }
+	}
+	X "$indent`t`t<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
+	if ($subUseFalse) { X "$indent`t`t`t<dcscor:use>false</dcscor:use>" }
+	X "$indent`t`t`t<dcscor:parameter>$(Esc-Xml $subName)</dcscor:parameter>"
+	if ($subUri) {
+		X "$indent`t`t`t<dcscor:value xmlns:dN=`"$subUri`" xsi:type=`"dN:$subLocalName`">$(Esc-Xml "$subVal")</dcscor:value>"
+	} else {
+		X "$indent`t`t`t<dcscor:value xsi:type=`"$subVT`">$(Esc-Xml "$subVal")</dcscor:value>"
+	}
+	X "$indent`t`t</dcscor:item>"
+}
+
 function Emit-OutputParameters {
 	param($params, [string]$indent, $blockViewMode = $null)
 
@@ -2559,28 +2608,17 @@ function Emit-OutputParameters {
 		} else {
 			X "$indent`t`t<dcscor:value xsi:type=`"$ptype`">$(Esc-Xml "$rawVal")</dcscor:value>"
 		}
-		# Nested sub-параметры (ТипДиаграммы.ВидПодписей и т.п.) — эмитим между value и extras
+		# Nested sub-параметры (ТипДиаграммы.ВидПодписей и т.п.) — эмитим между value и extras.
+		# valueType: строка → xsi:type=string, объект {uri, name} → локальный xmlns:dN + xsi:type=dN:name.
 		if ($wrapItems) {
 			$itemProps = if ($wrapItems -is [PSCustomObject]) { $wrapItems.PSObject.Properties } else { $null }
 			if ($itemProps) {
 				foreach ($ip in $itemProps) {
-					$subName = $ip.Name; $subWrap = $ip.Value
-					$subVal = if ($subWrap -is [PSCustomObject] -and $subWrap.PSObject.Properties['value']) { $subWrap.value } else { $subWrap }
-					$subVT  = if ($subWrap -is [PSCustomObject] -and $subWrap.PSObject.Properties['valueType']) { "$($subWrap.valueType)" } else { 'xs:string' }
-					X "$indent`t`t<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
-					X "$indent`t`t`t<dcscor:parameter>$(Esc-Xml $subName)</dcscor:parameter>"
-					X "$indent`t`t`t<dcscor:value xsi:type=`"$subVT`">$(Esc-Xml "$subVal")</dcscor:value>"
-					X "$indent`t`t</dcscor:item>"
+					Emit-OutputParametersSubItem -subName $ip.Name -subWrap $ip.Value -indent $indent
 				}
 			} elseif ($wrapItems -is [System.Collections.IDictionary]) {
 				foreach ($k in $wrapItems.Keys) {
-					$subWrap = $wrapItems[$k]
-					$subVal = if ($subWrap -is [System.Collections.IDictionary] -and $subWrap.Contains('value')) { $subWrap['value'] } else { $subWrap }
-					$subVT  = if ($subWrap -is [System.Collections.IDictionary] -and $subWrap.Contains('valueType')) { "$($subWrap['valueType'])" } else { 'xs:string' }
-					X "$indent`t`t<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
-					X "$indent`t`t`t<dcscor:parameter>$(Esc-Xml $k)</dcscor:parameter>"
-					X "$indent`t`t`t<dcscor:value xsi:type=`"$subVT`">$(Esc-Xml "$subVal")</dcscor:value>"
-					X "$indent`t`t</dcscor:item>"
+					Emit-OutputParametersSubItem -subName $k -subWrap $wrapItems[$k] -indent $indent
 				}
 			}
 		}

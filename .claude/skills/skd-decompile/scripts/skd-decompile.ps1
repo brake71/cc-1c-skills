@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.75 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.76 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1846,8 +1846,29 @@ function Build-OutputParameters {
 			if ($subType -eq 'LocalStringType') { $subRaw = Get-MLText $subVal }
 			elseif ($subType -eq 'Font') { $subRaw = Get-FontValue $subVal }
 			else { $subRaw = $subVal.InnerText }
-			# Сохраняем как {value, valueType} чтобы compile воспроизвёл xsi:type
-			$nestedItems[$subName] = [ordered]@{ value = $subRaw; valueType = $subFull }
+			# Резолвим prefix → URI: если URI не из стандартных корневых xmlns —
+			# сохраняем как объект {uri, name} чтобы compile эмитил xmlns локально.
+			$subTypeField = $subFull
+			if ($subFull -and $subFull -match '^([^:]+):(.+)$') {
+				$pfx = $matches[1]; $localName = $matches[2]
+				$uri = $subVal.GetNamespaceOfPrefix($pfx)
+				if ($uri -and $uri -notin @(
+					'http://www.w3.org/2001/XMLSchema',
+					'http://www.w3.org/2001/XMLSchema-instance',
+					'http://v8.1c.ru/8.1/data-composition-system/schema',
+					'http://v8.1c.ru/8.1/data-composition-system/settings',
+					'http://v8.1c.ru/8.1/data-composition-system/core',
+					'http://v8.1c.ru/8.1/data-composition-system/common',
+					'http://v8.1c.ru/8.1/data/core',
+					'http://v8.1c.ru/8.1/data/ui'
+				)) {
+					$subTypeField = [ordered]@{ uri = $uri; name = $localName }
+				}
+			}
+			$entry = [ordered]@{ value = $subRaw; valueType = $subTypeField }
+			$subUse = Get-Text $sub "dcscor:use"
+			if ($subUse -eq 'false') { $entry['use'] = $false }
+			$nestedItems[$subName] = $entry
 		}
 		# Extras (use=false / viewMode / userSettingID / userSettingPresentation / nested items) → wrapper.
 		$useV = Get-Text $it "dcscor:use"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.92 — Compile 1C DCS from JSON
+# skd-compile v1.93 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -2081,18 +2081,35 @@ def emit_output_parameters(lines, params, indent):
             emit_mltext(lines, f'{indent}\t\t', 'dcscor:value', val)
         else:
             lines.append(f'{indent}\t\t<dcscor:value xsi:type="{ptype}">{esc_xml(str(val))}</dcscor:value>')
-        # Nested sub-параметры (ТипДиаграммы.ВидПодписей и т.п.)
+        # Nested sub-параметры (ТипДиаграммы.ВидПодписей и т.п.).
+        # valueType: строка → xsi:type=string, объект {uri, name} → локальный xmlns:dN.
         if wrap_items and isinstance(wrap_items, dict):
             for sub_name, sub_wrap in wrap_items.items():
-                if isinstance(sub_wrap, dict) and 'value' in sub_wrap:
-                    sub_val = sub_wrap['value']
-                    sub_vt = sub_wrap.get('valueType', 'xs:string')
-                else:
-                    sub_val = sub_wrap
-                    sub_vt = 'xs:string'
+                sub_val = sub_wrap
+                sub_vt = 'xs:string'
+                sub_use_false = False
+                sub_uri = None
+                sub_local_name = None
+                if isinstance(sub_wrap, dict):
+                    if 'value' in sub_wrap:
+                        sub_val = sub_wrap['value']
+                    if 'valueType' in sub_wrap:
+                        vt = sub_wrap['valueType']
+                        if isinstance(vt, dict) and 'uri' in vt:
+                            sub_uri = str(vt['uri'])
+                            sub_local_name = str(vt['name'])
+                        else:
+                            sub_vt = str(vt)
+                    if sub_wrap.get('use') is False:
+                        sub_use_false = True
                 lines.append(f'{indent}\t\t<dcscor:item xsi:type="dcsset:SettingsParameterValue">')
+                if sub_use_false:
+                    lines.append(f'{indent}\t\t\t<dcscor:use>false</dcscor:use>')
                 lines.append(f'{indent}\t\t\t<dcscor:parameter>{esc_xml(sub_name)}</dcscor:parameter>')
-                lines.append(f'{indent}\t\t\t<dcscor:value xsi:type="{sub_vt}">{esc_xml(str(sub_val))}</dcscor:value>')
+                if sub_uri:
+                    lines.append(f'{indent}\t\t\t<dcscor:value xmlns:dN="{sub_uri}" xsi:type="dN:{sub_local_name}">{esc_xml(str(sub_val))}</dcscor:value>')
+                else:
+                    lines.append(f'{indent}\t\t\t<dcscor:value xsi:type="{sub_vt}">{esc_xml(str(sub_val))}</dcscor:value>')
                 lines.append(f'{indent}\t\t</dcscor:item>')
         if wrap_vm:
             lines.append(f'{indent}\t\t<dcsset:viewMode>{esc_xml(str(wrap_vm))}</dcsset:viewMode>')
