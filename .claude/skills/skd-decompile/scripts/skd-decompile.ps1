@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.85 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.86 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1036,7 +1036,17 @@ function Normalize-Color {
 	param($valNode)
 	if (-not $valNode) { return $null }
 	$txt = $valNode.InnerText
-	if ($txt -match '^d\d+p\d+:(.+)$') { return 'style:' + $matches[1] }
+	# Префикс xsi:type или value — резолвим в URI и выбираем DSL-префикс.
+	if ($txt -match '^([^:]+):(.+)$') {
+		$pfx = $matches[1]
+		$name = $matches[2]
+		$uri = $valNode.GetNamespaceOfPrefix($pfx)
+		switch ($uri) {
+			'http://v8.1c.ru/8.1/data/ui/style'          { return 'style:' + $name }
+			'http://v8.1c.ru/8.1/data/ui/colors/web'     { return 'web:' + $name }
+			'http://v8.1c.ru/8.1/data/ui/colors/windows' { return 'win:' + $name }
+		}
+	}
 	return $txt
 }
 

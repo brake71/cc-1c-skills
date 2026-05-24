@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.101 — Compile 1C DCS from JSON
+# skd-compile v1.102 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1346,11 +1346,18 @@ def load_user_styles(base_dir, output_path=None):
 
 
 def _emit_color_value(lines, color, indent):
-    if color.startswith('style:'):
-        style_name = color[6:]
-        lines.append(f'{indent}<dcscor:value xmlns:d8p1="http://v8.1c.ru/8.1/data/ui/style" xsi:type="v8ui:Color">d8p1:{style_name}</dcscor:value>')
-    else:
-        lines.append(f'{indent}<dcscor:value xsi:type="v8ui:Color">{esc_xml(color)}</dcscor:value>')
+    # Префиксы style:/web:/win: → соответствующий xmlns + dN:Name
+    color_prefix_to_uri = {
+        'style:': 'http://v8.1c.ru/8.1/data/ui/style',
+        'web:':   'http://v8.1c.ru/8.1/data/ui/colors/web',
+        'win:':   'http://v8.1c.ru/8.1/data/ui/colors/windows',
+    }
+    for pfx, uri in color_prefix_to_uri.items():
+        if color.startswith(pfx):
+            name = color[len(pfx):]
+            lines.append(f'{indent}<dcscor:value xmlns:d8p1="{uri}" xsi:type="v8ui:Color">d8p1:{name}</dcscor:value>')
+            return
+    lines.append(f'{indent}<dcscor:value xsi:type="v8ui:Color">{esc_xml(color)}</dcscor:value>')
 
 
 def _emit_cell_appearance(lines, style, width=0, v_merge=False, h_merge=False, min_height=0, extra_items=None):
@@ -1992,6 +1999,8 @@ def emit_appearance_value(lines, key, val, indent):
         if key_type:
             lines.append(f'{indent}\t<dcscor:value xsi:type="{key_type}">{esc_xml(actual_val)}</dcscor:value>')
         elif re.match(r'^(style|web|win):', actual_val):
+            # Внутри <dcsset:settings> префиксы style:/web:/win:/sys: уже объявлены на корне,
+            # локальный xmlns не нужен — эмитим short form.
             lines.append(f'{indent}\t<dcscor:value xsi:type="v8ui:Color">{esc_xml(actual_val)}</dcscor:value>')
         elif actual_val == 'true' or actual_val == 'false':
             lines.append(f'{indent}\t<dcscor:value xsi:type="xs:boolean">{actual_val}</dcscor:value>')

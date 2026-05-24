@@ -1,4 +1,4 @@
-﻿# skd-compile v1.101 — Compile 1C DCS from JSON
+﻿# skd-compile v1.102 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -1651,12 +1651,21 @@ foreach ($stylesFile in $searchPaths) {
 
 function Emit-ColorValue {
 	param([string]$color, [string]$indent)
-	if ($color.StartsWith('style:')) {
-		$styleName = $color.Substring(6)
-		X "$indent<dcscor:value xmlns:d8p1=`"http://v8.1c.ru/8.1/data/ui/style`" xsi:type=`"v8ui:Color`">d8p1:$styleName</dcscor:value>"
-	} else {
-		X "$indent<dcscor:value xsi:type=`"v8ui:Color`">$(Esc-Xml $color)</dcscor:value>"
+	# Префиксы style:/web:/win: → соответствующий xmlns + dN:Name
+	$colorPrefixToUri = @{
+		'style:' = 'http://v8.1c.ru/8.1/data/ui/style'
+		'web:'   = 'http://v8.1c.ru/8.1/data/ui/colors/web'
+		'win:'   = 'http://v8.1c.ru/8.1/data/ui/colors/windows'
 	}
+	foreach ($pfx in $colorPrefixToUri.Keys) {
+		if ($color.StartsWith($pfx)) {
+			$name = $color.Substring($pfx.Length)
+			$uri = $colorPrefixToUri[$pfx]
+			X "$indent<dcscor:value xmlns:d8p1=`"$uri`" xsi:type=`"v8ui:Color`">d8p1:$name</dcscor:value>"
+			return
+		}
+	}
+	X "$indent<dcscor:value xsi:type=`"v8ui:Color`">$(Esc-Xml $color)</dcscor:value>"
 }
 
 function Emit-CellAppearance {
@@ -2438,6 +2447,8 @@ function Emit-AppearanceValue {
 		if ($keyType) {
 			X "$indent`t<dcscor:value xsi:type=`"$keyType`">$(Esc-Xml $actualVal)</dcscor:value>"
 		} elseif ($actualVal -match '^(style|web|win):') {
+			# Внутри <dcsset:settings> префиксы style:/web:/win:/sys: уже объявлены на корне,
+			# локальный xmlns не нужен — эмитим short form.
 			X "$indent`t<dcscor:value xsi:type=`"v8ui:Color`">$(Esc-Xml $actualVal)</dcscor:value>"
 		} elseif ($actualVal -eq "true" -or $actualVal -eq "false") {
 			X "$indent`t<dcscor:value xsi:type=`"xs:boolean`">$actualVal</dcscor:value>"
