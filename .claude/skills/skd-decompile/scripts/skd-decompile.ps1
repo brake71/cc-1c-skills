@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.84 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.85 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -758,11 +758,26 @@ function Build-Parameter {
 	$valueTypeNode = $pNode.SelectSingleNode("r:valueType", $ns)
 	$typeShort = Get-ValueTypeShorthand $valueTypeNode
 
-	# value
-	$valueNode = $pNode.SelectSingleNode("r:value", $ns)
+	# value — может быть несколько (valueListAllowed: список значений по умолчанию).
+	$valueNodes = $pNode.SelectNodes("r:value", $ns)
 	$valueDisplay = $null
 	$valueIsNil = $false
-	if ($valueNode) {
+	if ($valueNodes.Count -gt 1) {
+		# Multi-value (список значений по умолчанию для параметра-списка)
+		$valueArr = @()
+		foreach ($vn in $valueNodes) {
+			$vt = Get-LocalXsiType $vn
+			$vTxt = $vn.InnerText
+			if ($vt -eq 'boolean') { $valueArr += ($vTxt -eq 'true') }
+			elseif ($vt -eq 'decimal') {
+				if ($vTxt -match '^-?\d+$') { $valueArr += [int]$vTxt }
+				else { $valueArr += [double]$vTxt }
+			} else { $valueArr += $vTxt }
+		}
+		$valueDisplay = $valueArr
+	}
+	elseif ($valueNodes.Count -eq 1) {
+		$valueNode = $valueNodes[0]
 		$nil = $valueNode.GetAttribute("nil", $NS_XSI)
 		if ($nil -eq 'true') { $valueIsNil = $true }
 		else {

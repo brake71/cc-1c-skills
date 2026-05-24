@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.100 — Compile 1C DCS from JSON
+# skd-compile v1.101 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1122,6 +1122,10 @@ def emit_single_param(lines, p, parsed):
         # Принудительный xsi:nil даже когда тип известен (для bit-perfect round-trip).
         if not vla:
             lines.append('\t\t<value xsi:nil="true"/>')
+    elif isinstance(parsed.get('value'), list):
+        # Multi-value (массив значений по умолчанию для valueListAllowed-параметра).
+        for v in parsed['value']:
+            emit_param_value(lines, p_type, v, '\t\t', False)
     else:
         emit_param_value(lines, p_type, parsed.get('value'), '\t\t', vla)
 

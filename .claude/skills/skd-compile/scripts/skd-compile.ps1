@@ -1,4 +1,4 @@
-﻿# skd-compile v1.100 — Compile 1C DCS from JSON
+﻿# skd-compile v1.101 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -1298,6 +1298,10 @@ function Emit-SingleParam {
 
 	# Value — for valueListAllowed params Designer omits <value> when empty
 	$vla = [bool]$parsed.valueListAllowed
+	# Multi-value (массив значений по умолчанию для valueListAllowed-параметра) — эмитим
+	# каждый отдельным <value>. Различаем массив значений от composite type (тоже array,
+	# но в parsed.type).
+	$valIsArray = ($parsed.value -is [array]) -or ($parsed.value -is [System.Collections.IList] -and $parsed.value -isnot [string])
 	if ($parsed.type -is [array] -or $parsed.type -is [System.Collections.IList]) {
 		# Composite type — Designer writes xsi:nil for any empty composite;
 		# non-empty composite values are uncommon and would need per-type tagging.
@@ -1307,6 +1311,10 @@ function Emit-SingleParam {
 	} elseif ($parsed.nilValue -eq $true) {
 		# Принудительный xsi:nil даже когда тип известен (для bit-perfect round-trip).
 		if (-not $vla) { X "`t`t<value xsi:nil=`"true`"/>" }
+	} elseif ($valIsArray) {
+		foreach ($v in @($parsed.value)) {
+			Emit-ParamValue -type $parsed.type -val $v -indent "`t`t" -valueListAllowed $false
+		}
 	} else {
 		Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t" -valueListAllowed $vla
 	}
