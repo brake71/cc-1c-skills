@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.70 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.71 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1453,9 +1453,20 @@ function Build-FilterItem {
 	} elseif ($rightNodes.Count -gt 1) {
 		# Несколько значений → массив (InList с конкретными значениями)
 		$arr = @()
-		foreach ($rn in $rightNodes) { $arr += (Get-FilterValue $rn) }
+		$rawTypes = @()
+		foreach ($rn in $rightNodes) {
+			$arr += (Get-FilterValue $rn)
+			$rawTypes += $rn.GetAttribute("type", $NS_XSI)
+		}
 		$value = $arr
 		$valueIsArrayFlag = $true
+		# Сохраняем raw xsi:type если все одинаковые — compile будет использовать
+		# как явный valueType (иначе авто-detect выберет DesignTimeValue для строк
+		# "Перечисление.*", но оригинал может хранить как xs:string).
+		$uniqTypes = @($rawTypes | Sort-Object -Unique)
+		if ($uniqTypes.Count -eq 1 -and $uniqTypes[0]) {
+			$valueTypeAttr = $uniqTypes[0]
+		}
 	}
 
 	$use = Get-Text $itemNode "dcsset:use"
