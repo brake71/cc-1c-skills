@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.72 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.73 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1936,13 +1936,30 @@ function Get-GroupFields {
 			$gf = Get-Text $gItem "dcsset:field"
 			$pat = Get-Text $gItem "dcsset:periodAdditionType"
 			$gt = Get-Text $gItem "dcsset:groupType"
-			$isDefault = (-not $pat -or $pat -eq 'None') -and (-not $gt -or $gt -eq 'Items')
+			# periodAdditionBegin/End: non-default = либо dcscor:Field (path), либо
+			# date ≠ 0001-01-01T00:00:00. Сохраняем строкой — compile auto-detect тип.
+			$pabN = $gItem.SelectSingleNode("dcsset:periodAdditionBegin", $ns)
+			$paeN = $gItem.SelectSingleNode("dcsset:periodAdditionEnd", $ns)
+			$pab = $null; $pae = $null
+			if ($pabN) {
+				$pt = Get-LocalXsiType $pabN
+				$pv = $pabN.InnerText
+				if ($pt -eq 'Field' -or ($pv -and $pv -ne '0001-01-01T00:00:00')) { $pab = $pv }
+			}
+			if ($paeN) {
+				$pt = Get-LocalXsiType $paeN
+				$pv = $paeN.InnerText
+				if ($pt -eq 'Field' -or ($pv -and $pv -ne '0001-01-01T00:00:00')) { $pae = $pv }
+			}
+			$isDefault = (-not $pat -or $pat -eq 'None') -and (-not $gt -or $gt -eq 'Items') -and (-not $pab) -and (-not $pae)
 			if ($isDefault) {
 				$gFields += $gf
 			} else {
 				$obj = [ordered]@{ field = $gf }
 				if ($gt -and $gt -ne 'Items') { $obj['groupType'] = $gt }
 				if ($pat -and $pat -ne 'None') { $obj['periodAdditionType'] = $pat }
+				if ($pab) { $obj['periodAdditionBegin'] = $pab }
+				if ($pae) { $obj['periodAdditionEnd'] = $pae }
 				$gFields += $obj
 			}
 		} else {

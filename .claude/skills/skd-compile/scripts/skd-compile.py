@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.89 — Compile 1C DCS from JSON
+# skd-compile v1.90 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -2192,8 +2192,13 @@ def emit_group_items(lines, group_by, indent):
             lines.append(f'{indent}\t\t<dcsset:groupType>{esc_xml(gt)}</dcsset:groupType>')
             pat = str(field.get('periodAdditionType', 'None'))
             lines.append(f'{indent}\t\t<dcsset:periodAdditionType>{esc_xml(pat)}</dcsset:periodAdditionType>')
-            lines.append(f'{indent}\t\t<dcsset:periodAdditionBegin xsi:type="xs:dateTime">0001-01-01T00:00:00</dcsset:periodAdditionBegin>')
-            lines.append(f'{indent}\t\t<dcsset:periodAdditionEnd xsi:type="xs:dateTime">0001-01-01T00:00:00</dcsset:periodAdditionEnd>')
+            # Auto-detect: ISO date → xs:dateTime, иначе → dcscor:Field (path).
+            pab = str(field.get('periodAdditionBegin', '0001-01-01T00:00:00'))
+            pae = str(field.get('periodAdditionEnd', '0001-01-01T00:00:00'))
+            pab_t = 'xs:dateTime' if re.match(r'^\d{4}-\d{2}-\d{2}T', pab) else 'dcscor:Field'
+            pae_t = 'xs:dateTime' if re.match(r'^\d{4}-\d{2}-\d{2}T', pae) else 'dcscor:Field'
+            lines.append(f'{indent}\t\t<dcsset:periodAdditionBegin xsi:type="{pab_t}">{esc_xml(pab)}</dcsset:periodAdditionBegin>')
+            lines.append(f'{indent}\t\t<dcsset:periodAdditionEnd xsi:type="{pae_t}">{esc_xml(pae)}</dcsset:periodAdditionEnd>')
             lines.append(f'{indent}\t</dcsset:item>')
     lines.append(f'{indent}</dcsset:groupItems>')
 
