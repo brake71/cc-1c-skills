@@ -142,7 +142,10 @@ import {
   closeModals, checkForErrors, dismissPendingErrors, fetchErrorStack,
   _detectPlatformDialogs, _closePlatformDialogs,
 } from './core/errors.mjs';
-import { safeClick, findFieldInputId } from './core/helpers.mjs';
+import {
+  safeClick, findFieldInputId,
+  detectNewForm as helperDetectNewForm,
+} from './core/helpers.mjs';
 // Re-export only what was publicly exported before the refactor.
 // waitForStable/waitForCondition/startNetworkMonitor/closeModals/checkForErrors/
 // dismissPendingErrors are internal helpers — imported above for local use only.
@@ -1408,19 +1411,9 @@ async function fillReferenceField(selector, fieldName, value, formNum) {
   const text = String(value);
   const escapedSel = selector.replace(/'/g, "\\'");
 
-  // Helper: detect new forms opened above the current one
-  async function detectNewForm() {
-    return page.evaluate(`(() => {
-      const forms = {};
-      document.querySelectorAll('input.editInput[id], a.press[id]').forEach(el => {
-        if (el.offsetWidth === 0) return;
-        const m = el.id.match(/^form(\\d+)_/);
-        if (m) forms[m[1]] = true;
-      });
-      const nums = Object.keys(forms).map(Number).filter(n => n > ${formNum});
-      return nums.length > 0 ? Math.max(...nums) : null;
-    })()`);
-  }
+  // Helper: detect new forms opened above the current one (strict — interactive
+  // elements only; fillReferenceField-specific)
+  const detectNewForm = () => helperDetectNewForm(formNum, { strict: true });
 
   // Helper: clear the field using Shift+F4 (native 1C mechanism)
   async function clearField() {
@@ -2290,20 +2283,9 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
     })()`);
   }
 
-  // Helper: detect any new form (broader than detectSelectionForm — also finds type dialogs
-  // whose a.press buttons have empty IDs). Looks for any visible element with id="form{N}_*".
-  async function detectNewForm() {
-    return page.evaluate(`(() => {
-      const forms = {};
-      document.querySelectorAll('[id]').forEach(el => {
-        if (el.offsetWidth === 0 && el.offsetHeight === 0) return;
-        const m = el.id.match(/^form(\\d+)_/);
-        if (m) forms[m[1]] = true;
-      });
-      const nums = Object.keys(forms).map(Number).filter(n => n > ${formNum});
-      return nums.length > 0 ? Math.max(...nums) : null;
-    })()`);
-  }
+  // Helper: detect any new form (broad — finds type dialogs whose a.press
+  // buttons have empty IDs). Looks for any visible element with id="form{N}_*".
+  const detectNewForm = () => helperDetectNewForm(formNum);
 
   // Helper: open selection form and pick value
   async function openFormAndPick() {
@@ -3496,16 +3478,7 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
     }
 
     // Check for a new form (broad detection — also catches type dialogs whose buttons lack IDs)
-    const newForm = await page.evaluate(`(() => {
-      const forms = {};
-      document.querySelectorAll('[id]').forEach(el => {
-        if (el.offsetWidth === 0 && el.offsetHeight === 0) return;
-        const m = el.id.match(/^form(\\d+)_/);
-        if (m) forms[m[1]] = true;
-      });
-      const nums = Object.keys(forms).map(Number).filter(n => n > ${formNum});
-      return nums.length > 0 ? Math.max(...nums) : null;
-    })()`);
+    const newForm = await helperDetectNewForm(formNum);
 
     if (newForm !== null) {
       if (await isTypeDialog(newForm)) {

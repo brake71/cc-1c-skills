@@ -53,3 +53,33 @@ export async function findFieldInputId(formNum, fieldName) {
     return el ? el.id : null;
   })()`);
 }
+
+/**
+ * Detect a new form opened above the given `prevFormNum`. Two modes:
+ *   `{ strict: true }`  — only counts visible interactive elements
+ *     (`input.editInput[id], a.press[id]`); used by fillReferenceField.
+ *   default (broad)     — any element with `id^=form{N}_` that's visible
+ *     in either dimension; also finds type-dialogs whose a.press buttons
+ *     have empty IDs. Used by selectValue / fillTableRow.
+ *
+ * @param {number} prevFormNum
+ * @param {object} [opts]
+ * @param {boolean} [opts.strict=false]
+ * @returns {Promise<number|null>} new form number or null
+ */
+export async function detectNewForm(prevFormNum, { strict = false } = {}) {
+  const selector = strict ? 'input.editInput[id], a.press[id]' : '[id]';
+  const visibleCheck = strict
+    ? 'el.offsetWidth === 0'
+    : 'el.offsetWidth === 0 && el.offsetHeight === 0';
+  return page.evaluate(`(() => {
+    const forms = {};
+    document.querySelectorAll(${JSON.stringify(selector)}).forEach(el => {
+      if (${visibleCheck}) return;
+      const m = el.id.match(/^form(\\d+)_/);
+      if (m) forms[m[1]] = true;
+    });
+    const nums = Object.keys(forms).map(Number).filter(n => n > ${prevFormNum});
+    return nums.length > 0 ? Math.max(...nums) : null;
+  })()`);
+}
