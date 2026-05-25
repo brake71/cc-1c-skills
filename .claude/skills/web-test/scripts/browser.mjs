@@ -142,7 +142,7 @@ import {
   closeModals, checkForErrors, dismissPendingErrors, fetchErrorStack,
   _detectPlatformDialogs, _closePlatformDialogs,
 } from './core/errors.mjs';
-import { safeClick } from './core/helpers.mjs';
+import { safeClick, findFieldInputId } from './core/helpers.mjs';
 // Re-export only what was publicly exported before the refactor.
 // waitForStable/waitForCondition/startNetworkMonitor/closeModals/checkForErrors/
 // dismissPendingErrors are internal helpers — imported above for local use only.
@@ -2195,12 +2195,7 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
 
   // === CLEAR FIELD if searchText is empty/null ===
   if (!searchText && searchText !== 0) {
-    const inputId = await page.evaluate(`(() => {
-      const p = 'form${formNum}_';
-      const name = ${JSON.stringify(btn.fieldName)};
-      const el = document.querySelector('[id="' + p + name + '"], [id="' + p + name + '_i0"]');
-      return el ? el.id : null;
-    })()`);
+    const inputId = await findFieldInputId(formNum, btn.fieldName);
     if (inputId) {
       await page.click(`[id="${inputId}"]`);
       await page.waitForTimeout(200);
@@ -2219,12 +2214,7 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
   // then open type selection dialog, pick the type, then pick the value.
   if (type) {
     // Find and focus the field input
-    const inputId = await page.evaluate(`(() => {
-      const p = 'form${formNum}_';
-      const name = ${JSON.stringify(btn.fieldName)};
-      const el = document.querySelector('[id="' + p + name + '"], [id="' + p + name + '_i0"]');
-      return el ? el.id : null;
-    })()`);
+    const inputId = await findFieldInputId(formNum, btn.fieldName);
     if (!inputId) throw new Error(`selectValue: field "${btn.fieldName}" input not found`);
 
     // Clear cached type + value with Shift+F4
@@ -2434,12 +2424,7 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
       await page.waitForTimeout(500);
 
       // Focus the field input and press F4 to open selection form
-      const inputId = await page.evaluate(`(() => {
-        const p = 'form${formNum}_';
-        const name = ${JSON.stringify(btn.fieldName)};
-        const el = document.querySelector('[id="' + p + name + '"], [id="' + p + name + '_i0"]');
-        return el ? el.id : null;
-      })()`);
+      const inputId = await findFieldInputId(formNum, btn.fieldName);
       if (inputId) {
         await page.click(`[id="${inputId}"]`);
         await page.waitForTimeout(300);
@@ -2489,12 +2474,7 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
 
-  const inputId = await page.evaluate(`(() => {
-    const p = 'form${formNum}_';
-    const name = ${JSON.stringify(btn.fieldName)};
-    const el = document.querySelector('[id="' + p + name + '"], [id="' + p + name + '_i0"]');
-    return el ? el.id : null;
-  })()`);
+  const inputId = await findFieldInputId(formNum, btn.fieldName);
   if (inputId) {
     await page.click(`[id="${inputId}"]`);
     await page.waitForTimeout(300);

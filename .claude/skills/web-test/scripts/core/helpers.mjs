@@ -34,3 +34,22 @@ export async function safeClick(selector, { timeout, dismissErrors = false } = {
     }
   }
 }
+
+/**
+ * Find a form field's input element id by name. Tries `form{N}_{name}` first,
+ * then `form{N}_{name}_i0` (reference fields use the _i0 suffix). Returns the
+ * element id or null. Used in selectValue's clear/composite-type/F4 fallback
+ * branches.
+ *
+ * @param {number} formNum
+ * @param {string} fieldName
+ * @returns {Promise<string|null>}
+ */
+export async function findFieldInputId(formNum, fieldName) {
+  return await page.evaluate(`(() => {
+    const p = 'form${formNum}_';
+    const name = ${JSON.stringify(fieldName)};
+    const el = document.querySelector('[id="' + p + name + '"], [id="' + p + name + '_i0"]');
+    return el ? el.id : null;
+  })()`);
+}
