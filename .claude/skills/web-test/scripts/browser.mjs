@@ -142,6 +142,7 @@ import {
   closeModals, checkForErrors, dismissPendingErrors, fetchErrorStack,
   _detectPlatformDialogs, _closePlatformDialogs,
 } from './core/errors.mjs';
+import { safeClick } from './core/helpers.mjs';
 // Re-export only what was publicly exported before the refactor.
 // waitForStable/waitForCondition/startNetworkMonitor/closeModals/checkForErrors/
 // dismissPendingErrors are internal helpers — imported above for local use only.
@@ -1502,23 +1503,7 @@ async function fillReferenceField(selector, fieldName, value, formNum) {
   } catch { /* DLB approach failed — fall through to paste */ }
 
   // 1. Focus (handle surface/modal overlay from previous interaction)
-  try {
-    await page.click(selector);
-  } catch (e) {
-    if (e.message.includes('intercepts pointer events')) {
-      // Try force click first (no side effects), then Escape as fallback
-      try {
-        await page.click(selector, { force: true });
-      } catch (e2) {
-        if (e2.message.includes('intercepts pointer events')) {
-          await dismissPendingErrors();
-          await page.keyboard.press('Escape');
-          await page.waitForTimeout(500);
-          await page.click(selector);
-        } else throw e2;
-      }
-    } else throw e;
-  }
+  await safeClick(selector, { dismissErrors: true });
 
   // 2. If field already has a value, clear using Shift+F4 (native 1C mechanism).
   //    This is needed for reference fields — Shift+F4 properly clears the ref link.
@@ -2064,27 +2049,7 @@ export async function clickElement(text, { dblclick, table, toggle, expand, modi
   } else {
     const selector = `[id="${target.id}"]`;
     // Use Playwright click for proper mousedown/mouseup events
-    try {
-      await page.click(selector, { timeout: 5000 });
-    } catch (clickErr) {
-      if (clickErr.message.includes('intercepts pointer events')) {
-        // Surface overlay intercepts — try force click first (no side effects),
-        // then Escape + retry as fallback (Escape can trigger save dialogs on forms)
-        try {
-          await page.click(selector, { force: true, timeout: 5000 });
-        } catch (clickErr2) {
-          if (clickErr2.message.includes('intercepts pointer events')) {
-            await page.keyboard.press('Escape');
-            await page.waitForTimeout(500);
-            await page.click(selector, { timeout: 5000 });
-          } else {
-            throw clickErr2;
-          }
-        }
-      } else {
-        throw clickErr;
-      }
-    }
+    await safeClick(selector, { timeout: 5000 });
   }
 
   // If submenu button — read popup items and return them as hints
@@ -2427,21 +2392,7 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
 
   // 2. Click DLB (handle funcPanel / surface overlay intercept)
   const dlbSel = `[id="${btn.buttonId}"]`;
-  try {
-    await page.click(dlbSel, { timeout: 5000 });
-  } catch (dlbErr) {
-    if (dlbErr.message.includes('intercepts pointer events')) {
-      try {
-        await page.click(dlbSel, { force: true, timeout: 5000 });
-      } catch (dlbErr2) {
-        if (dlbErr2.message.includes('intercepts pointer events')) {
-          await page.keyboard.press('Escape');
-          await page.waitForTimeout(500);
-          await page.click(dlbSel, { timeout: 5000 });
-        } else throw dlbErr2;
-      }
-    } else throw dlbErr;
-  }
+  await safeClick(dlbSel, { timeout: 5000 });
   await page.waitForTimeout(ACTION_WAIT);
 
   // 3A. Check if a dropdown popup appeared (inline quick selection)
