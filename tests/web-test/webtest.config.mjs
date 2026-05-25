@@ -21,6 +21,12 @@ export default {
   //   extension may not load (Playwright limitation). Use only when really needed.
   timeout: 60000,
 
+  // OS clipboard preservation: default `true`. Around every action call the engine
+  // saves the full clipboard contents (any MIME types via `navigator.clipboard.read()`)
+  // and restores them after, so a local user can copy/paste in parallel with a test run.
+  // Set to `false` to disable for this suite. CLI flag `--no-preserve-clipboard` overrides.
+  preserveClipboard: true,
+
   // Allure severity policy: inverted map "уровень → теги, попадающие в этот уровень".
   // Резолв (run.mjs:resolveSeverity):
   //   1. explicit `export const severity` в тесте — выигрывает всегда;

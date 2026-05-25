@@ -1,4 +1,4 @@
-// web-test browser v1.12 — Playwright browser management for 1C web client
+// web-test browser v1.16 — Playwright browser management for 1C web client
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * Playwright browser management for 1C web client.
@@ -60,6 +60,98 @@ const STABLE_CYCLES = 3;    // consecutive stable cycles needed
 // 1C browser extension ID (stable across versions, defined by key in manifest.json)
 const EXT_ID = 'pbhelknnhilelbnhfpcjlcabhmfangik';
 let persistentUserDataDir = null; // temp dir for launchPersistentContext, cleaned on disconnect
+
+// Clipboard preservation: save full clipboard contents (all MIME types) right before
+// each writeText+Ctrl+V pair, restore right after — narrow window so a user's
+// concurrent Ctrl+C isn't clobbered. Blobs are stashed on `window` (no CDP
+// serialization). Toggled via setPreserveClipboard() from run.mjs.
+let preserveClipboard = true;
+let clipboardWarnLogged = false;
+export function setPreserveClipboard(v) { preserveClipboard = !!v; }
+export async function saveClipboard() {
+  if (!page) return;
+  try {
+    await page.evaluate(async () => {
+      try {
+        const items = await navigator.clipboard.read();
+        const saved = [];
+        for (const item of items) {
+          const types = {};
+          for (const t of item.types) types[t] = await item.getType(t);
+          saved.push(types);
+        }
+        window.__webTestSavedClipboard = saved;
+        delete window.__webTestClipboardError;
+      } catch (e) {
+        window.__webTestSavedClipboard = null;
+        window.__webTestClipboardError = e?.name || String(e);
+      }
+    });
+  } catch {
+    // page.evaluate itself failed (closed page, navigation in flight) — skip.
+  }
+}
+export async function restoreClipboard() {
+  if (!page) return;
+  let err = null;
+  try {
+    err = await page.evaluate(async () => {
+      const saved = window.__webTestSavedClipboard;
+      const captured = window.__webTestClipboardError || null;
+      delete window.__webTestSavedClipboard;
+      delete window.__webTestClipboardError;
+      try {
+        if (!saved || saved.length === 0) {
+          // Save failed (e.g. CF_HDROP from Explorer not readable via Clipboard API)
+          // or buffer was empty. Either way, the test's writeText already destroyed
+          // any prior native formats in the OS clipboard, so explicitly clear here
+          // to avoid leaking the test value into the user's clipboard.
+          await navigator.clipboard.writeText('');
+          return captured;
+        }
+        const items = saved.map(types => new ClipboardItem(types));
+        await navigator.clipboard.write(items);
+        return null;
+      } catch (e) {
+        return e?.name || String(e);
+      }
+    });
+  } catch {
+    return;
+  }
+  if (err && !clipboardWarnLogged) {
+    clipboardWarnLogged = true;
+    console.error(`[web-test] clipboard preserve skipped: ${err} (logged once per session)`);
+  }
+}
+
+/**
+ * Paste `text` via OS clipboard (the only trusted-paste path that 1C respects
+ * for autocomplete and Cyrillic). Wraps the writeText+confirm-key pair in a
+ * narrow save/restore so a user's clipboard survives the test run — the window
+ * between save and restore is microseconds.
+ *
+ * - `confirm` — key (string) or sequence (array) to press after writeText.
+ *   Defaults to 'Control+V'. Use ['Control+a', 'Control+v'] for select-all-then-paste,
+ *   or 'Shift+F11' for the goto-link dialog.
+ * - `postDelay` — ms to wait between confirm-press and restore, for dialogs
+ *   that read clipboard asynchronously (e.g. Shift+F11). Default 0.
+ */
+export async function pasteText(text, { confirm = 'Control+V', postDelay = 0 } = {}) {
+  if (!page) return;
+  if (preserveClipboard) await saveClipboard();
+  try {
+    await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(text))})`);
+    if (Array.isArray(confirm)) {
+      for (const key of confirm) await page.keyboard.press(key);
+    } else if (confirm) {
+      await page.keyboard.press(confirm);
+    }
+    if (postDelay) await page.waitForTimeout(postDelay);
+  } finally {
+    if (preserveClipboard) await restoreClipboard();
+  }
+}
 
 /**
  * Find the 1C browser extension in Chrome/Edge user profiles.
@@ -1137,8 +1229,7 @@ export async function navigateLink(url) {
   const formBefore = await page.evaluate(detectFormScript());
 
   // Copy link to clipboard, press Shift+F11 (opens "Go to link" dialog with clipboard content)
-  await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(link)})`);
-  await page.keyboard.press('Shift+F11');
+  await pasteText(link, { confirm: 'Shift+F11', postDelay: 200 });
   await waitForStable();
 
   // Click "Перейти" in the navigation dialog
@@ -1868,8 +1959,7 @@ async function advancedSearchInline(formNum, text) {
     await page.click(`[id="${patternId}"]`);
     await page.waitForTimeout(200);
     await page.keyboard.press('Control+A');
-    await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(text))})`);
-    await page.keyboard.press('Control+V');
+    await pasteText(text);
     await page.waitForTimeout(300);
 
     // 4. Click "Найти"
@@ -1971,8 +2061,7 @@ async function pickFromSelectionForm(selFormNum, fieldName, search, origFormNum)
         await page.click(`[id="${searchInputId}"]`);
         await page.waitForTimeout(200);
         await page.keyboard.press('Control+A');
-        await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(searchText))})`);
-        await page.keyboard.press('Control+V');
+        await pasteText(searchText);
         await page.waitForTimeout(300);
         await page.keyboard.press('Enter');
         await waitForStable(selFormNum);
@@ -2112,8 +2201,7 @@ async function pickFromTypeDialog(formNum, typeName) {
 
   // Paste search text (focus is on "Что искать" field)
   await page.keyboard.press('Control+a');
-  await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(typeName)})`);
-  await page.keyboard.press('Control+v');
+  await pasteText(typeName);
   await page.waitForTimeout(300);
 
   // Find the "Найти" dialog form number (it's > formNum)
@@ -2302,8 +2390,7 @@ async function fillReferenceField(selector, fieldName, value, formNum) {
   }
 
   // 3. Paste text via clipboard (trusted event → triggers real 1C autocomplete)
-  await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(text)})`);
-  await page.keyboard.press('Control+V');
+  await pasteText(text);
   await page.waitForTimeout(2000);
 
   // 4. Check editDropDown for autocomplete suggestions
@@ -2518,8 +2605,7 @@ export async function fillFields(fields) {
         await page.click(selector);
         await page.waitForTimeout(200);
         await page.keyboard.press('Control+A');
-        await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(fields[r.field]))})`);
-        await page.keyboard.press('Control+V');
+        await pasteText(fields[r.field]);
         await page.waitForTimeout(300);
         await page.keyboard.press('Tab');
         await waitForStable();
@@ -2539,8 +2625,7 @@ export async function fillFields(fields) {
         await page.click(selector);
         await page.waitForTimeout(200);
         await page.keyboard.press('Control+A');
-        await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(fields[r.field]))})`);
-        await page.keyboard.press('Control+V');
+        await pasteText(fields[r.field]);
         await page.waitForTimeout(300);
         await page.keyboard.press('Tab');
         await waitForStable();
@@ -3818,9 +3903,7 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
         })()`);
         if (selForm === null && inInputAfterDblclick) {
           // Plain text/numeric field — fill via clipboard paste
-          await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(info.value)})`);
-          await page.keyboard.press('Control+a');
-          await page.keyboard.press('Control+v');
+          await pasteText(info.value, { confirm: ['Control+a', 'Control+v'] });
           await page.waitForTimeout(400);
           // Dismiss EDD autocomplete if it appeared
           const hasEdd = await page.evaluate(`(() => {
@@ -4135,9 +4218,7 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
               }
             }
           }
-          await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(text)})`);
-          await page.keyboard.press('Control+a');
-          await page.keyboard.press('Control+v');
+          await pasteText(text, { confirm: ['Control+a', 'Control+v'] });
           await page.waitForTimeout(400);
           await page.keyboard.press('Tab');
           await page.waitForTimeout(300);
@@ -4169,8 +4250,7 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
 
     // === Fill this cell: clipboard paste (trusted event) ===
     await page.keyboard.press('Control+A');
-    await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(text)})`);
-    await page.keyboard.press('Control+V');
+    await pasteText(text);
     await page.waitForTimeout(1500);
 
     // Check if paste was rejected (composite-type cell blocks text input until type is selected)
@@ -4421,9 +4501,7 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
                 }
               }
             }
-            await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(text)})`);
-            await page.keyboard.press('Control+a');
-            await page.keyboard.press('Control+v');
+            await pasteText(text, { confirm: ['Control+a', 'Control+v'] });
             await page.waitForTimeout(400);
             await page.keyboard.press('Tab');
             await page.waitForTimeout(300);
@@ -4668,8 +4746,7 @@ export async function filterList(text, { field, exact } = {}) {
       await page.click(`[id="${searchId}"]`);
       await page.waitForTimeout(200);
       await page.keyboard.press('Control+A');
-      await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(text))})`);
-      await page.keyboard.press('Control+V');
+      await pasteText(text);
       await page.waitForTimeout(300);
       await page.keyboard.press('Enter');
       await waitForStable(formNum);
@@ -4849,8 +4926,7 @@ export async function filterList(text, { field, exact } = {}) {
       await page.waitForTimeout(100);
       await page.keyboard.press('Shift+End');
       await page.waitForTimeout(100);
-      await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(text))})`);
-      await page.keyboard.press('Control+V');
+      await pasteText(text);
       await page.waitForTimeout(500);
     }
   } else {
@@ -4858,8 +4934,7 @@ export async function filterList(text, { field, exact } = {}) {
     await page.click(`[id="${dialogInfo.patternId}"]`);
     await page.waitForTimeout(200);
     await page.keyboard.press('Control+A');
-    await page.evaluate(`navigator.clipboard.writeText(${JSON.stringify(String(text))})`);
-    await page.keyboard.press('Control+V');
+    await pasteText(text);
     await page.waitForTimeout(300);
 
     if (dialogInfo.isRef) {

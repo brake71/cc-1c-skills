@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// web-test run v1.14 — CLI runner for 1C web client automation
+// web-test run v1.16 — CLI runner for 1C web client automation
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * CLI runner for 1C web client automation.
@@ -38,6 +38,14 @@ const flags = {
   execTimeoutMs: parseExecTimeoutMs(rawArgs),
 };
 const args = rawArgs.filter(a => !a.startsWith('--'));
+
+// Clipboard preservation: default ON. Disabled by --no-preserve-clipboard CLI flag
+// or WEB_TEST_PRESERVE_CLIPBOARD=0 env. cmdTest may further disable via config.
+// Forwarded to browser.setPreserveClipboard() — narrow save/restore lives around
+// each writeText+Ctrl+V pair inside pasteText() in browser.mjs.
+const preserveClipboard = !rawArgs.includes('--no-preserve-clipboard')
+  && process.env.WEB_TEST_PRESERVE_CLIPBOARD !== '0';
+browser.setPreserveClipboard(preserveClipboard);
 
 function parseExecTimeoutMs(argv) {
   const DEFAULT_MS = 30 * 60 * 1000;
@@ -449,6 +457,10 @@ async function cmdTest(rawArgs) {
   if (!tags && config.tags) tags = config.tags;
   opts.timeout = ownArgs.some(a => a.startsWith('--timeout=')) ? opts.timeout : (config.timeout || opts.timeout);
   opts.retry = ownArgs.some(a => a.startsWith('--retry=')) ? opts.retry : (config.retries || opts.retry);
+  // Clipboard preservation: CLI flag wins (already applied at boot), else config can disable.
+  if (config.preserveClipboard === false && !ownArgs.includes('--no-preserve-clipboard')) {
+    browser.setPreserveClipboard(false);
+  }
   opts.record = opts.record || !!config.record;
   opts.screenshot = opts.screenshot || config.screenshot || 'on-failure';
   if (!['on-failure', 'every-step', 'off'].includes(opts.screenshot)) {
@@ -1224,6 +1236,10 @@ Commands:
 
 Options for exec:
   --no-record              Skip video recording (record() becomes no-op)
+
+Global options (any command):
+  --no-preserve-clipboard  Don't save/restore OS clipboard around action calls.
+                           Default: on (env: WEB_TEST_PRESERVE_CLIPBOARD=0 to disable globally).
 
 Options for test:
   --tags=smoke,crud        Filter tests by tags
