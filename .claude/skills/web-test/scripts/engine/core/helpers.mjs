@@ -1,10 +1,10 @@
-// web-test core/helpers v1.16 — private, cross-cutting helpers used by the
+// web-test core/helpers v1.17 — private, cross-cutting helpers used by the
 // public action functions (clickElement/fillFields/selectValue/etc).
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { page } from './state.mjs';
 import { dismissPendingErrors, checkForErrors } from './errors.mjs';
-import { getFormState } from '../../browser.mjs';
+import { getFormState } from './form-state.mjs';
 
 /**
  * page.click with the standard "intercepts pointer events" retry ladder:

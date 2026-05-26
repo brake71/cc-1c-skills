@@ -1,4 +1,4 @@
-// web-test recording/highlight v1.16 — Visual highlight overlay (single + auto-mode for clickElement/fillFields/selectValue).
+// web-test recording/highlight v1.17 — Visual highlight overlay (single + auto-mode for clickElement/fillFields/selectValue).
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import {

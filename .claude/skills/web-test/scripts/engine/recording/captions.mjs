@@ -1,4 +1,4 @@
-// web-test recording/captions v1.16 — Overlay primitives: captions, title slides, image overlays.
+// web-test recording/captions v1.17 — Overlay primitives: captions, title slides, image overlays.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { existsSync as fsExistsSync, readFileSync } from 'fs';

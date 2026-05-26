@@ -1,4 +1,4 @@
-// web-test core/wait v1.16 — Smart wait helpers: DOM stability polling, JS-expression polling, CDP network monitor.
+// web-test core/wait v1.17 — Smart wait helpers: DOM stability polling, JS-expression polling, CDP network monitor.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { page, MAX_WAIT, POLL_INTERVAL, STABLE_CYCLES } from './state.mjs';

@@ -1,4 +1,4 @@
-// web-test recording/narration v1.16 — Post-process: generate TTS audio for captions and merge with recorded video.
+// web-test recording/narration v1.17 — Post-process: generate TTS audio for captions and merge with recorded video.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { execFileSync } from 'child_process';

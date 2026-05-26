@@ -1,4 +1,4 @@
-// web-test core/click v1.16 — clickElement dispatcher: spreadsheet cells, submenus, grid groups/trees, buttons/links, tabs.
+// web-test core/click v1.17 — clickElement dispatcher: spreadsheet cells, submenus, grid groups/trees, buttons/links, tabs.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import {
@@ -16,7 +16,7 @@ import {
   clickSpreadsheetCell, findSpreadsheetCellByText,
 } from '../table/spreadsheet.mjs';
 // getFormState still in browser.mjs.
-import { getFormState } from '../../browser.mjs';
+import { getFormState } from './form-state.mjs';
 
 /** Click a button/hyperlink/tab on the current form. Use {dblclick: true} to double-click (open items from lists).
  *  First argument can also be an object { row, column } to click a SpreadsheetDocument cell. */

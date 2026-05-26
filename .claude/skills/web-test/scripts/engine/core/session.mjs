@@ -1,4 +1,4 @@
-// web-test core/session v1.16 — Browser session lifecycle: connect/disconnect/attach/detach, multi-context registry.
+// web-test core/session v1.17 — Browser session lifecycle: connect/disconnect/attach/detach, multi-context registry.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { chromium } from 'playwright';
@@ -14,10 +14,7 @@ import {
 } from './state.mjs';
 import { closeModals } from './errors.mjs';
 import { stopRecording } from '../recording/capture.mjs';
-// getPageState lives in browser.mjs (moves to nav/navigation.mjs in a later stage).
-// Static import is a deliberate ESM cycle — fine because the binding is used at
-// call time (inside async connect/createContext), not at module evaluation time.
-import { getPageState } from '../../browser.mjs';
+import { getPageState } from '../nav/navigation.mjs';
 
 /**
  * Find the 1C browser extension in Chrome/Edge user profiles.
@@ -125,7 +122,7 @@ export async function connect(url, { extensionPath } = {}) {
  * @param {object} slot   { page, sessionPrefix, seanceId } from contexts Map
  * @param {number} [waitMs=500]  pause after logout fetch (gives 1C time to process)
  */
-async function _logoutSlot(slot, waitMs = 500) {
+async function logoutSlot(slot, waitMs = 500) {
   if (!slot?.page || slot.page.isClosed() || !slot.seanceId || !slot.sessionPrefix) return;
   try {
     const logoutUrl = `${slot.sessionPrefix}/e1cib/logout?seanceId=${slot.seanceId}`;
@@ -143,13 +140,13 @@ async function _logoutSlot(slot, waitMs = 500) {
 export async function disconnect() {
   // Multi-context path: stop recording + logout each slot before closing browser
   if (contexts.size > 0) {
-    _saveActiveSlot();
+    saveActiveSlot();
     // Recorder is global — one stop covers all contexts
     if (recorder) {
       try { await stopRecording(); } catch {}
     }
     for (const [, slot] of contexts.entries()) {
-      await _logoutSlot(slot);
+      await logoutSlot(slot);
     }
     contexts.clear();
     setActiveContextName(null);
@@ -163,7 +160,7 @@ export async function disconnect() {
 
   if (browser) {
     // Graceful logout — release the 1C license (single-session connect path)
-    await _logoutSlot({ page, sessionPrefix, seanceId }, 1000);
+    await logoutSlot({ page, sessionPrefix, seanceId }, 1000);
     await browser.close().catch(() => {});
     setBrowser(null);
     setPage(null);
@@ -217,7 +214,7 @@ export function getSession() {
  * Save current module-level state into the active slot before switching.
  * No-op if no active slot.
  */
-function _saveActiveSlot() {
+function saveActiveSlot() {
   if (!activeContextName) return;
   const slot = contexts.get(activeContextName);
   if (!slot) return;
@@ -231,7 +228,7 @@ function _saveActiveSlot() {
 }
 
 /** Load a slot's state into module-level vars and mark it active. */
-function _activateSlot(name) {
+function activateSlot(name) {
   const slot = contexts.get(name);
   if (!slot) throw new Error(`Context "${name}" not found. Create it via createContext() first.`);
   setPage(slot.page);
@@ -242,7 +239,7 @@ function _activateSlot(name) {
 }
 
 /** Attach 1C session listeners to a page, writing into the given slot. */
-function _attachSessionListeners(pg, slot, name) {
+function attachSessionListeners(pg, slot, name) {
   pg.on('dialog', dialog => dialog.accept().catch(() => {}));
   pg.on('request', req => {
     if (slot.seanceId) return;
@@ -311,7 +308,7 @@ export async function createContext(name, url, { extensionPath, isolation = 'tab
   }
 
   // Save current active before switching
-  _saveActiveSlot();
+  saveActiveSlot();
 
   // Create slot — page differs by mode
   let newCtx, newPage;
@@ -341,8 +338,8 @@ export async function createContext(name, url, { extensionPath, isolation = 'tab
   };
   contexts.set(name, slot);
 
-  _attachSessionListeners(newPage, slot, name);
-  _activateSlot(name);
+  attachSessionListeners(newPage, slot, name);
+  activateSlot(name);
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: LOAD_TIMEOUT });
   try { await page.waitForSelector('#themesCell_theme_0', { timeout: INIT_TIMEOUT }); }
@@ -359,8 +356,8 @@ export async function setActiveContext(name) {
   // If a recording is active, flush the outgoing page's last frame so the gap is filled
   // up to the moment of the switch (avoids a "jump" in video time).
   if (recorder && recorder._flushFrames) recorder._flushFrames();
-  _saveActiveSlot();
-  _activateSlot(name);
+  saveActiveSlot();
+  activateSlot(name);
   // If the recording is still alive (it lives across slots — we keep the same ffmpeg/output),
   // re-attach its screencast to the newly active page.
   if (recorder && recorder._attachPage) {
@@ -397,7 +394,7 @@ export async function closeContext(name) {
     throw new Error(`closeContext: cannot close the active context "${name}". setActiveContext to another context first.`);
   }
   const slot = contexts.get(name);
-  await _logoutSlot(slot);
+  await logoutSlot(slot);
   if (activeMode === 'tab') {
     try { await slot.page.close(); } catch {}
   } else {

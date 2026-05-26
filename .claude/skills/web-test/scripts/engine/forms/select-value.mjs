@@ -16,7 +16,8 @@ import {
   detectNewForm as helperDetectNewForm,
 } from '../core/helpers.mjs';
 // pasteText + getFormState live in browser.mjs.
-import { pasteText, getFormState } from '../../browser.mjs';
+import { pasteText } from '../core/clipboard.mjs';
+import { getFormState } from '../core/form-state.mjs';
 
 /**
  * Scan visible grid rows for a text match (exact → startsWith → includes).

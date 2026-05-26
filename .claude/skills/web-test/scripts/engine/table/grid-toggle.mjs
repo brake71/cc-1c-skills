@@ -1,4 +1,4 @@
-// web-test table/grid-toggle v1.16 — shared icon-detection for grid expand/
+// web-test table/grid-toggle v1.17 — shared icon-detection for grid expand/
 // collapse toggles. Used by clickElement's gridGroup/gridParent and
 // gridTreeNode branches; the actual mouse click stays in the caller because
 // it depends on the caller-local modifier-key handling.

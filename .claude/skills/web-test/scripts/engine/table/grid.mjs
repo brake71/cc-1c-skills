@@ -1,4 +1,4 @@
-// web-test table/grid v1.16 — Form-grid operations: read table rows, fill rows, delete rows.
+// web-test table/grid v1.17 — Form-grid operations: read table rows, fill rows, delete rows.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 //
 // "Grid" в терминах 1С — таблица на форме (.gridLine/.gridBody/.grid в DOM):
@@ -11,7 +11,7 @@ import { dismissPendingErrors } from '../core/errors.mjs';
 import { waitForStable } from '../core/wait.mjs';
 import { clickElement } from '../core/click.mjs';
 // getFormState lives in browser.mjs.
-import { getFormState } from '../../browser.mjs';
+import { getFormState } from '../core/form-state.mjs';
 
 /** Read structured table data with pagination. Returns columns, rows, total count. */
 export async function readTable({ maxRows = 20, offset = 0, table } = {}) {

@@ -1,4 +1,4 @@
-// web-test forms/fill v1.16 — Fill form fields by name (text/checkbox/date/dropdown/reference). Delegates references to selectValue / fillReferenceField.
+// web-test forms/fill v1.17 — Fill form fields by name (text/checkbox/date/dropdown/reference). Delegates references to selectValue / fillReferenceField.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import {
@@ -15,7 +15,8 @@ import {
   isTypeDialog, pickFromTypeDialog,
 } from './select-value.mjs';
 // pasteText + getFormState live in browser.mjs.
-import { pasteText, getFormState } from '../../browser.mjs';
+import { pasteText } from '../core/clipboard.mjs';
+import { getFormState } from '../core/form-state.mjs';
 
 /** Fill fields on the current form via Playwright page.fill(). Returns fill results + updated form. */
 export async function fillFields(fields) {

@@ -1,4 +1,4 @@
-// web-test table/row-fill v1.16 — fillTableRow — заполнение строки табличной части/списка через Tab-навигацию и попутный выбор значений.
+// web-test table/row-fill v1.17 — fillTableRow — заполнение строки табличной части/списка через Tab-навигацию и попутный выбор значений.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import {
@@ -20,7 +20,8 @@ import {
   fillReferenceField, selectValue,
 } from '../forms/select-value.mjs';
 // pasteText + getFormState still in browser.mjs (cycle).
-import { pasteText, getFormState } from '../../browser.mjs';
+import { pasteText } from '../core/clipboard.mjs';
+import { getFormState } from '../core/form-state.mjs';
 
 /**
  * Fill cells in the current table row via Tab navigation.

@@ -1,4 +1,4 @@
-// web-test core/errors v1.16 — Error/modal/platform-dialog handling: dismiss, detect, fetch stack from 1C UI.
+// web-test core/errors v1.17 — Error/modal/platform-dialog handling: dismiss, detect, fetch stack from 1C UI.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { page } from './state.mjs';
@@ -62,8 +62,8 @@ export async function dismissPendingErrors() {
   // Close leftover platform dialogs first (About, Support Info, Error Report)
   // These block all interaction via modalSurface and are invisible to 1C form detection
   try {
-    const pd = await _detectPlatformDialogs();
-    if (pd.length) await _closePlatformDialogs();
+    const pd = await detectPlatformDialogs();
+    if (pd.length) await closePlatformDialogs();
   } catch { /* OK */ }
   const err = await checkForErrors();
   if (!err?.modal) return null;
@@ -84,7 +84,7 @@ export async function dismissPendingErrors() {
  * Detect open platform-level dialogs (About, Support Info, Error Report).
  * Returns array of { type, title? } for each detected dialog, or empty array.
  */
-export async function _detectPlatformDialogs() {
+export async function detectPlatformDialogs() {
   return await page.evaluate(() => {
     const result = [];
     // "О программе" dialog
@@ -114,7 +114,7 @@ export async function _detectPlatformDialogs() {
  * These are NOT 1C forms — they are platform UI overlays invisible to getFormState().
  * Each close is wrapped in try/catch to avoid cascading failures.
  */
-export async function _closePlatformDialogs() {
+export async function closePlatformDialogs() {
   await page.evaluate(() => {
     // "Подробный текст ошибки" OK button (inside error report detail view)
     // It's a cloud window with its own OK button — look for visible pressDefault in small ps*win
@@ -142,7 +142,7 @@ export async function _closePlatformDialogs() {
  * Input: raw text from errJournalInput (first block) or "Подробный текст ошибки" textarea.
  * Returns { raw, timestamp?, entries: [{location, code}] }
  */
-function _parseErrorStack(raw) {
+function parseErrorStack(raw) {
   if (!raw) return null;
   const result = { raw, entries: [] };
   // Extract timestamp if present (format: DD.MM.YYYY HH:MM:SS)
@@ -180,13 +180,13 @@ export async function fetchErrorStack(formNum, hasReport) {
         return !!(el && el.offsetWidth > 2 && el.textContent.trim());
       }, formNum);
     }
-    if (hasReport) return await _fetchStackViaReport(formNum);
-    return await _fetchStackViaHamburger(formNum);
+    if (hasReport) return await fetchStackViaReport(formNum);
+    return await fetchStackViaHamburger(formNum);
   } catch {
     return null;
   } finally {
     // Ensure all platform dialogs are closed
-    try { await _closePlatformDialogs(); } catch {}
+    try { await closePlatformDialogs(); } catch {}
     // Ensure the error modal itself is closed
     try {
       const sel = formNum != null
@@ -203,7 +203,7 @@ export async function fetchErrorStack(formNum, hasReport) {
  * Path 1: Fetch stack via OpenReport link (for platform exceptions).
  * The error modal must still be open with a visible "Сформировать отчет об ошибке" link.
  */
-async function _fetchStackViaReport(formNum) {
+async function fetchStackViaReport(formNum) {
   // 1. Get coordinates of the OpenReport link and click via mouse (modalSurface blocks JS clicks)
   const coords = await page.evaluate((fn) => {
     const el = document.getElementById('form' + fn + '_OpenReport#text');
@@ -274,7 +274,7 @@ async function _fetchStackViaReport(formNum) {
     await page.waitForTimeout(300);
   } catch {}
 
-  return _parseErrorStack(raw);
+  return parseErrorStack(raw);
 }
 
 /**
@@ -282,7 +282,7 @@ async function _fetchStackViaReport(formNum) {
  * Works for all error types including simple ВызватьИсключение.
  * The error modal is closed first to allow access to the hamburger menu.
  */
-async function _fetchStackViaHamburger(formNum) {
+async function fetchStackViaHamburger(formNum) {
   // 1. Close the error modal first
   try {
     const sel = formNum != null
@@ -336,6 +336,6 @@ async function _fetchStackViaHamburger(formNum) {
   }
   const firstBlock = firstBlockLines.join('\n').trim();
 
-  // 7. Close support info and about dialogs (done in finally via _closePlatformDialogs)
-  return _parseErrorStack(firstBlock || errorText);
+  // 7. Close support info and about dialogs (done in finally via closePlatformDialogs)
+  return parseErrorStack(firstBlock || errorText);
 }

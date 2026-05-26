@@ -1,4 +1,4 @@
-// web-test core/state v1.16 — module-level state for the web-test engine.
+// web-test core/state v1.17 — module-level state for the web-test engine.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 //
 // Holds the single browser/page/recorder slot plus the multi-context registry,

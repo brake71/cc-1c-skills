@@ -1,11 +1,11 @@
-// web-test forms/close v1.16 — Close current form via Escape, handle save-changes confirmation.
+// web-test forms/close v1.17 — Close current form via Escape, handle save-changes confirmation.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { page, recorder, ensureConnected } from '../core/state.mjs';
 import { detectFormScript } from '../../dom.mjs';
-import { dismissPendingErrors, checkForErrors, _detectPlatformDialogs, _closePlatformDialogs } from '../core/errors.mjs';
+import { dismissPendingErrors, checkForErrors, detectPlatformDialogs, closePlatformDialogs } from '../core/errors.mjs';
 import { waitForStable } from '../core/wait.mjs';
-import { getFormState } from '../../browser.mjs';
+import { getFormState } from '../core/form-state.mjs';
 
 /**
  * Close the current form/dialog via Escape.
@@ -19,9 +19,9 @@ export async function closeForm({ save } = {}) {
   ensureConnected();
   await dismissPendingErrors();
   // If platform dialogs are open, close them instead of pressing Escape
-  const pd = await _detectPlatformDialogs();
+  const pd = await detectPlatformDialogs();
   if (pd.length) {
-    await _closePlatformDialogs();
+    await closePlatformDialogs();
     await page.waitForTimeout(300);
     const state = await getFormState();
     state.closed = true;

@@ -1,4 +1,4 @@
-// web-test recording/capture v1.16 — Recording lifecycle (CDP screencast + ffmpeg pipe), screenshot, wait helpers.
+// web-test recording/capture v1.17 — Recording lifecycle (CDP screencast + ffmpeg pipe), screenshot, wait helpers.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { spawn } from 'child_process';
@@ -45,7 +45,7 @@ export async function wait(seconds) {
       await page.waitForTimeout(ms);
     }
   }
-  const { getFormState } = await import('../../browser.mjs');
+  const { getFormState } = await import('../core/form-state.mjs');
   return await getFormState();
 }
 

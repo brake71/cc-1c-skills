@@ -1,4 +1,4 @@
-// web-test recording/tts v1.16 — TTS providers (edge/openai/elevenlabs) and ffmpeg/ffprobe helpers.
+// web-test recording/tts v1.17 — TTS providers (edge/openai/elevenlabs) and ffmpeg/ffprobe helpers.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { execFileSync, spawn } from 'child_process';
