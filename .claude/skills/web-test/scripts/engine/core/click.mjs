@@ -1,4 +1,4 @@
-// web-test core/click v1.18 — clickElement dispatcher: spreadsheet cells, submenus, grid groups/trees, buttons/links, tabs.
+// web-test core/click v1.19 — clickElement dispatcher: spreadsheet cells, submenus, grid groups/trees, buttons/links, tabs.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import {
@@ -90,11 +90,7 @@ export async function clickElement(text, { dblclick, table, toggle, expand, modi
         await page.mouse.click(found.x, found.y);
       }
       await waitForStable();
-      const state = await getFormState();
-      state.clicked = { kind: 'popupItem', name: found.name };
-      const err = await checkForErrors();
-      if (err) state.errors = err;
-      return state;
+      return returnFormState({ clicked: { kind: 'popupItem', name: found.name } });
     }
     // No match in popup — fall through to form elements
   }

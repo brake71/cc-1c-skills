@@ -1,4 +1,4 @@
-// web-test forms/select-value v1.19 — Reference & composite-type value selection: selectValue, fillReferenceField, selection/type-dialog pickers.
+// web-test forms/select-value v1.20 — Reference & composite-type value selection: selectValue, fillReferenceField, selection/type-dialog pickers.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import {
@@ -677,13 +677,10 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
     const selFormNum = await detectSelectionForm();
     if (selFormNum !== null) {
       const pickResult = await pickFromSelectionForm(selFormNum, btn.fieldName, searchText || '', formNum);
-      const state = await getFormState();
-      state.selected = { field: btn.fieldName, search: searchText || null, method: 'form' };
-      if (pickResult.error) state.selected.error = pickResult.error;
-      if (pickResult.message) state.selected.message = pickResult.message;
-      const err = await checkForErrors();
-      if (err) state.errors = err;
-      return state;
+      const selected = { field: btn.fieldName, search: searchText || null, method: 'form' };
+      if (pickResult.error) selected.error = pickResult.error;
+      if (pickResult.message) selected.message = pickResult.message;
+      return returnFormState({ selected });
     }
     return null;
   }
@@ -717,11 +714,7 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
         // Click via evaluate to bypass div.surface overlay
         await clickEddItem(match.name);
         await waitForStable();
-        const state = await getFormState();
-        state.selected = { field: btn.fieldName, search: searchText, method: 'dropdown' };
-        const err = await checkForErrors();
-        if (err) state.errors = err;
-        return state;
+        return returnFormState({ selected: { field: btn.fieldName, search: searchText, method: 'dropdown' } });
       }
 
       // No match in dropdown — try "Показать все" to open selection form
@@ -755,11 +748,7 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
     if (regularItems.length > 0) {
       await clickEddItem(regularItems[0].name);
       await waitForStable();
-      const state = await getFormState();
-      state.selected = { field: btn.fieldName, search: null, picked: regularItems[0].name, method: 'dropdown' };
-      const err = await checkForErrors();
-      if (err) state.errors = err;
-      return state;
+      return returnFormState({ selected: { field: btn.fieldName, search: null, picked: regularItems[0].name, method: 'dropdown' } });
     }
   }
 
@@ -773,13 +762,10 @@ export async function selectValue(fieldName, searchText, { type } = {}) {
       throw new Error(`selectValue: field "${btn.fieldName}" opened a type selection dialog — this is a composite-type field. Specify the type: selectValue('${btn.fieldName}', '${searchText || ''}', { type: 'ИмяТипа' })`);
     }
     const pickResult = await pickFromSelectionForm(selFormNum, btn.fieldName, searchText || '', formNum);
-    const state = await getFormState();
-    state.selected = { field: btn.fieldName, search: searchText || null, method: 'form' };
-    if (pickResult.error) state.selected.error = pickResult.error;
-    if (pickResult.message) state.selected.message = pickResult.message;
-    const err = await checkForErrors();
-    if (err) state.errors = err;
-    return state;
+    const selected = { field: btn.fieldName, search: searchText || null, method: 'form' };
+    if (pickResult.error) selected.error = pickResult.error;
+    if (pickResult.message) selected.message = pickResult.message;
+    return returnFormState({ selected });
   }
 
   // 3C. Neither popup nor form — try F4 as last resort
