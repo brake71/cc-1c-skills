@@ -1,4 +1,4 @@
-// web-test core/helpers v1.19 — private, cross-cutting helpers used by the
+// web-test core/helpers v1.20 — private, cross-cutting helpers used by the
 // public action functions (clickElement/fillFields/selectValue/etc).
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
@@ -161,4 +161,17 @@ export async function returnFormState(extras = {}) {
   const err = await checkForErrors();
   if (err) state.errors = err;
   return state;
+}
+
+/**
+ * Mouse click at (x, y) with an optional modifier key held down for the duration.
+ * Supports `'ctrl'` / `'shift'` (used by clickElement for multi-select).
+ * Pass `{ dbl: true }` for double-click.
+ */
+export async function modifierClick(x, y, modifier, { dbl = false } = {}) {
+  const modKey = modifier === 'ctrl' ? 'Control' : modifier === 'shift' ? 'Shift' : null;
+  if (modKey) await page.keyboard.down(modKey);
+  if (dbl) await page.mouse.dblclick(x, y);
+  else await page.mouse.click(x, y);
+  if (modKey) await page.keyboard.up(modKey);
 }
