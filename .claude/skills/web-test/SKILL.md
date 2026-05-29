@@ -193,7 +193,7 @@ const t = await readTable();
 ```
 
 - `hasMore.below` — always present. `true` ⇒ scrolling down (PageDown / `clickElement` with `scroll:true`) will reveal more rows.
-- `hasMore.above` — only present for tabular sections with a visible scrollbar widget. Dynamic lists hide their scrollbar so we cannot detect "above" reliably; treat absence as unknown.
+- `hasMore.above` — usually present too. Detected via the dynamic-list page-turn buttons (#vertButtonScroll) or the tabular-section scrollbar. Absent only for rare grids that have neither widget — treat absence as unknown.
 
 ```js
 const t = await readTable({ maxRows: 50 });

@@ -1,4 +1,4 @@
-// web-test dom/grid v1.6 — grid resolution + table reading + edit-time helpers
+// web-test dom/grid v1.7 — grid resolution + table reading + edit-time helpers
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 /**
@@ -241,19 +241,32 @@ export function readTableScript(formNum, { maxRows = 20, offset = 0, gridSelecto
     }
     const isTree = !!body.querySelector('.gridBoxTree');
     const hasGroups = rows.some(r => r._kind === 'group');
-    // Virtualization-aware "has more" signal:
-    //  - Tabular sections render a visible scrollbar widget (#vertScroll_* with class "scrollV" and non-zero size).
-    //    Its child tracks expose exact above/below pixel offsets relative to the slider.
-    //  - Dynamic lists hide the widget (empty class, 0×0). We can only infer below via scrollHeight>clientHeight.
+    // Virtualization-aware hasMore signal. Three sources in priority order:
+    //  1. Dynamic-list turn buttons (#vertButtonScroll_<gridId>, sibling of grid).
+    //     Buttons carry data-home/data-up (above) and data-down/data-end (below);
+    //     class "disabled" on a direction means nothing to show there.
+    //  2. Tabular-section scrollbar (#vertScroll_<gridId>, class scrollV) —
+    //     track-back/track-next pixel heights tell us above/below precisely.
+    //  3. Fallback: scrollHeight>clientHeight for "below"; "above" unknown.
     let hasMore;
-    const vsId = 'vertScroll_' + (grid.id || '').replace(p, '');
-    const vs = grid.querySelector('#' + CSS.escape(vsId));
-    if (vs && vs.classList.contains('scrollV') && vs.offsetWidth > 0) {
-      const back = vs.querySelector('[data-track-back]')?.offsetHeight ?? 0;
-      const next = vs.querySelector('[data-track-next]')?.offsetHeight ?? 0;
-      hasMore = { above: back > 0, below: next > 0 };
+    const turnsBox = document.getElementById('vertButtonScroll_' + grid.id);
+    if (turnsBox && turnsBox.offsetHeight > 0) {
+      const upBtns = turnsBox.querySelectorAll('[data-home], [data-up]');
+      const dnBtns = turnsBox.querySelectorAll('[data-down], [data-end]');
+      hasMore = {
+        above: [...upBtns].some(b => !b.classList.contains('disabled')),
+        below: [...dnBtns].some(b => !b.classList.contains('disabled')),
+      };
     } else {
-      hasMore = { below: body.scrollHeight > body.clientHeight };
+      const vsId = 'vertScroll_' + grid.id;
+      const vs = document.getElementById(vsId);
+      if (vs && vs.classList.contains('scrollV') && vs.offsetWidth > 0) {
+        const back = vs.querySelector('[data-track-back]')?.offsetHeight ?? 0;
+        const next = vs.querySelector('[data-track-next]')?.offsetHeight ?? 0;
+        hasMore = { above: back > 0, below: next > 0 };
+      } else {
+        hasMore = { below: body.scrollHeight > body.clientHeight };
+      }
     }
     const result = { name, columns: columns.map(c => c.text), rows, total, offset: ${offset}, shown: rows.length, hasMore };
     if (isTree) result.viewMode = 'tree';
@@ -631,13 +644,19 @@ export function snapshotGridScript(gridSelector) {
     const lines = body.querySelectorAll('.gridLine');
     const txt = ln => ln?.querySelector('.gridBoxText')?.innerText?.trim() || '';
     const selIdx = [...lines].findIndex(l => l.classList.contains('selRow') || l.classList.contains('select'));
-    const vsId = 'vertScroll_' + (grid.id || '').replace(/^form\\d+_/, '');
-    const vs = grid.querySelector('#' + CSS.escape(vsId));
+    // hasBelow priority: (1) dynamic-list turn buttons, (2) tabular scrollbar tracks, (3) scrollHeight.
     let hasBelow;
-    if (vs && vs.classList.contains('scrollV') && vs.offsetWidth > 0) {
-      hasBelow = (vs.querySelector('[data-track-next]')?.offsetHeight ?? 0) > 0;
+    const turnsBox = document.getElementById('vertButtonScroll_' + grid.id);
+    if (turnsBox && turnsBox.offsetHeight > 0) {
+      const dnBtns = turnsBox.querySelectorAll('[data-down], [data-end]');
+      hasBelow = [...dnBtns].some(b => !b.classList.contains('disabled'));
     } else {
-      hasBelow = body.scrollHeight > body.clientHeight;
+      const vs = document.getElementById('vertScroll_' + grid.id);
+      if (vs && vs.classList.contains('scrollV') && vs.offsetWidth > 0) {
+        hasBelow = (vs.querySelector('[data-track-next]')?.offsetHeight ?? 0) > 0;
+      } else {
+        hasBelow = body.scrollHeight > body.clientHeight;
+      }
     }
     return {
       firstText: txt(lines[0]),
