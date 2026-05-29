@@ -1,10 +1,10 @@
 export const name = 'clickElement({row, column}): cell click on grids + spreadsheet backward-compat';
 export const tags = ['cell-click', 'smoke'];
-export const timeout = 120000;
+export const timeout = 180000;
 
 export default async function({
   navigateSection, navigateLink, openCommand, clickElement, fillFields, fillTableRow,
-  readTable, readSpreadsheet, closeForm, getFormState, wait, assert, step, log
+  filterList, readTable, readSpreadsheet, closeForm, getFormState, wait, assert, step, log
 }) {
 
   // ── Spreadsheet backward-compat ─────────────────────────────────────────────
@@ -117,13 +117,100 @@ export default async function({
       'Сообщение объясняет про виртуализацию / DOM window');
   });
 
-  // ── Cleanup ────────────────────────────────────────────────────────────────
-  await step('cleanup: close document', async () => {
+  // ── Cleanup the 2-row doc before opening LongDoc ───────────────────────────
+  await step('cleanup: close 2-row document', async () => {
     await closeForm({ save: false });
   });
 
-  // Note: reveal-loop (scroll:true) algorithm verified manually on bp-demo
-  // (catalog Контрагенты, group Покупатели, ~22 items requiring page-down).
-  // The synthetic stand has issues with rapid sequential doc opens that prevent
-  // a stable >30-row table setup here — left for a future enhancement of _hooks.
+  // ── Open LongDoc (30 rows in tabular section, fixtures from ЗаполнитьДокументы) ──
+  await step('setup: open LongDoc (30-row tabular section)', async () => {
+    await navigateSection('Склад');
+    await openCommand('Приходная накладная');
+    await filterList('LongDoc', { field: 'Комментарий' });
+    // Открываем единственный найденный LongDoc (фикстура создаётся один раз
+    // при первом запуске базы — даже после многократных прогонов одна штука).
+    const t = await readTable();
+    assert.ok(t.rows?.length >= 1, 'LongDoc должен быть в списке');
+    const num = t.rows[0]['Номер'];
+    await clickElement(num, { dblclick: true });
+    await wait(2);
+    const f = await getFormState();
+    assert.equal(f.tables?.[0]?.name, 'Товары', 'Открыта форма документа с ТЧ Товары');
+  });
+
+  // ── Reveal-loop: filter row not in current DOM window, scroll:true разворачивает ──
+  await step('reveal-loop: scroll:true находит строку Количество=25 в LongDoc', async () => {
+    const tBefore = await readTable({ table: 'Товары', maxRows: 100 });
+    log(`loaded=${tBefore.rows.length} hasMore=${JSON.stringify(tBefore.hasMore)}`);
+    assert.ok(tBefore.hasMore?.below === true || tBefore.rows.length >= 20,
+      'LongDoc виртуализирован или загружено достаточно строк');
+    // Целевая Количество=25 — заведомо глубоко в списке (LongDoc заполняет 1..30).
+    const res = await clickElement(
+      { row: { 'Количество': '25,000' }, column: 'Сумма' },
+      { table: 'Товары', scroll: true }
+    );
+    log(`reveal clicked: ${JSON.stringify(res.clicked)}`);
+    assert.equal(res.clicked?.kind, 'gridCell', 'reveal-loop нашёл строку');
+    assert.equal(res.clicked?.column, 'Сумма', 'column сохранён');
+  });
+
+  // ── Horizontal scroll: вправо до последней колонки, потом обратно влево ────
+  await step('horizontal scroll: вправо до Признак контроля, потом влево к Количество', async () => {
+    const right = await clickElement(
+      { row: 0, column: 'Признак контроля' },
+      { table: 'Товары' }
+    );
+    log(`right click: ${JSON.stringify(right.clicked)}`);
+    assert.equal(right.clicked?.kind, 'gridCell', 'kind=gridCell для правой');
+    assert.equal(right.clicked?.column, 'Признак контроля', 'добрались до самой правой колонки');
+    // Теперь обратно к Количество — направление ArrowLeft, scroll сдвигает viewport влево.
+    const left = await clickElement(
+      { row: 0, column: 'Количество' },
+      { table: 'Товары' }
+    );
+    log(`left click: ${JSON.stringify(left.clicked)}`);
+    assert.equal(left.clicked?.kind, 'gridCell', 'kind=gridCell для левой');
+    assert.equal(left.clicked?.column, 'Количество', 'вернулись к Количество через ArrowLeft scroll');
+  });
+
+  // ── Focus-click skip checkbox: cluster booleans on right edge, click further right ──
+  await step('focus-click пропускает checkbox-ячейки при выборе focus-точки', async () => {
+    // После предыдущего шага viewport уехал вправо. Нужно сбросить — выходим из ТЧ
+    // и заходим заново через клик на Контрагент (вне грида).
+    await fillFields({ 'Комментарий': 'LongDoc' }); // вернёт к дефолтному viewport
+    await wait(0.3);
+    const before = await readTable({ table: 'Товары', maxRows: 5 });
+    const bools0 = {
+      ВРезерве: before.rows[0]['В резерве'],
+      НаКомиссии: before.rows[0]['На комиссии'],
+      Подарок: before.rows[0]['Подарок'],
+    };
+    log(`booleans before: ${JSON.stringify(bools0)}`);
+    // Клик в дальнюю колонку «Серия» — focus-pick должен выбрать самую правую
+    // видимую non-frozen non-checkbox ячейку. При дефолтном viewport кластер
+    // из 3 boolean (ВРезерве/НаКомиссии/Подарок) на правом крае — pick должен
+    // их пропустить и взять Источник (reference, левее cluster).
+    const res = await clickElement(
+      { row: 0, column: 'Серия' },
+      { table: 'Товары' }
+    );
+    log(`clicked: ${JSON.stringify(res.clicked)}`);
+    assert.equal(res.clicked?.kind, 'gridCell', 'клик на Серия (после горизонтального скролла)');
+    // Главное: booleans в строке 0 НЕ изменились — focus-click не задел чекбоксы.
+    const after = await readTable({ table: 'Товары', maxRows: 5 });
+    const bools1 = {
+      ВРезерве: after.rows[0]['В резерве'],
+      НаКомиссии: after.rows[0]['На комиссии'],
+      Подарок: after.rows[0]['Подарок'],
+    };
+    log(`booleans after: ${JSON.stringify(bools1)}`);
+    assert.equal(bools1.ВРезерве, bools0.ВРезерве, 'ВРезерве не переключилось');
+    assert.equal(bools1.НаКомиссии, bools0.НаКомиссии, 'НаКомиссии не переключилось');
+    assert.equal(bools1.Подарок, bools0.Подарок, 'Подарок не переключилось');
+  });
+
+  // ── Final cleanup ──────────────────────────────────────────────────────────
+  await step('cleanup: close LongDoc', async () => {
+    await closeForm({ save: false });
+  });
 }
