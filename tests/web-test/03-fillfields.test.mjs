@@ -15,7 +15,8 @@ export default async function({ navigateSection, openCommand, clickElement, fill
     const result = await fillFields({
       'Артикул': 'TEST-001',
       'Активен': false,                       // Boolean → CheckBoxField, toggle
-      'ДатаПоступления': '15.05.2026',        // date
+      'ДатаПоступления': '15.05.2026',        // date → CB iCalendB calendar, paste
+      'Цена': '777',                          // Number → CB iCalcB calculator, paste
       'ВидНоменклатуры': 'Услуга',            // EnumRef dropdown
     });
 
@@ -23,11 +24,14 @@ export default async function({ navigateSection, openCommand, clickElement, fill
     for (const f of result.filled) {
       assert.ok(f.ok, `fillField "${f.field}" должен вернуть ok=true`);
     }
+    assert.equal(result.filled.find(f => f.field === 'Цена')?.method, 'paste',
+      'Цена через paste (калькулятор ≠ форма выбора)');
 
     const state = await getFormState();
     assert.equal(findField(state, 'Артикул')?.value, 'TEST-001', 'Артикул text');
     assert.equal(findField(state, 'Активен')?.value, false, 'Активен checkbox=false');
     assert.equal(findField(state, 'ДатаПоступления')?.value, '15.05.2026', 'ДатаПоступления');
+    assert.equal(findField(state, 'Цена')?.value, '777,00', 'Цена записалась (1С форматирует → 777,00)');
     assert.equal(findField(state, 'ВидНоменклатуры')?.value, 'Услуга', 'ВидНоменклатуры dropdown');
 
     await closeForm({ save: false });

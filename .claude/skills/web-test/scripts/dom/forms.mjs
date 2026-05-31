@@ -1,4 +1,4 @@
-// web-test dom/forms v1.5 — form detection, content read, click-target/field-button resolution
+// web-test dom/forms v1.6 — form detection, content read, click-target/field-button resolution
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import { DETECT_FORM_FN, READ_FORM_FN } from './_shared.mjs';
 
@@ -331,6 +331,7 @@ export function resolveFieldsScript(formNum, fields) {
       if (cbEl?.offsetWidth > 0) {
         last.hasPick = true;
         if (cbEl.classList.contains('iCalendB')) last.isDate = true;
+        else if (cbEl.classList.contains('iCalcB')) last.isCalc = true;
       }
       allFields.push(last);
     });
@@ -411,6 +412,7 @@ export function resolveFieldsScript(formNum, fields) {
         if (found.hasSelect) entry.hasSelect = true;
         if (found.hasPick) entry.hasPick = true;
         if (found.isDate) entry.isDate = true;
+        if (found.isCalc) entry.isCalc = true;
         if (found._dcsCheckbox) {
           entry.dcsCheckbox = { inputId: found._dcsCheckbox.inputId, checked: found._dcsCheckbox.checked };
           delete found._dcsCheckbox;

@@ -1,4 +1,4 @@
-// web-test forms/fill v1.18 — Fill form fields by name (text/checkbox/date/dropdown/reference). Delegates references to selectValue / fillReferenceField.
+// web-test forms/fill v1.19 — Fill form fields by name (text/checkbox/date/number/dropdown/reference). Delegates references to selectValue / fillReferenceField.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import {
@@ -95,8 +95,9 @@ export async function fillFields(fields) {
         // Combobox/reference with DLB: DLB-first, then paste fallback
         const refResult = await fillReferenceField(selector, r.field, fields[r.field], formNum);
         results.push(refResult);
-      } else if (r.hasPick && r.isDate) {
-        // Date/time field with calendar CB — use paste (calendar is not a selection form)
+      } else if (r.hasPick && (r.isDate || r.isCalc)) {
+        // Date/time (calendar CB) or numeric (calculator CB) field — use paste:
+        // the pick button is a calendar/calculator widget, not a selection form.
         await page.click(selector);
         await page.waitForTimeout(200);
         await page.keyboard.press('Control+A');
