@@ -18,14 +18,7 @@
           {
             "name": "Основной",
             "settings": {
-              "structure": [
-                {
-                  "groupFields": ["Auto"],
-                  "children": [
-                    { "groupFields": ["Период"] }
-                  ]
-                }
-              ]
+              "structure": "Период > Auto"
             }
           }
         ]
