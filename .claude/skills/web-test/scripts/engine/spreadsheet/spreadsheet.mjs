@@ -1,4 +1,4 @@
-// web-test spreadsheet v1.19 — readSpreadsheet + helpers for SpreadsheetDocument (отчёты, печатные формы).
+// web-test spreadsheet v1.20 — readSpreadsheet + helpers for SpreadsheetDocument (отчёты, печатные формы).
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { page, ensureConnected } from '../core/state.mjs';
@@ -7,6 +7,7 @@ import { waitForStable } from '../core/wait.mjs';
 import { getFormState } from '../forms/state.mjs';
 import { returnFormState } from '../core/helpers.mjs';
 import { scrollHorizontallyByKey } from '../core/scroll-horiz.mjs';
+import { checkForErrors } from '../core/errors.mjs';
 
 // --- Spreadsheet helpers (shared by readSpreadsheet and clickElement) ---
 
