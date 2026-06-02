@@ -20,6 +20,20 @@ export default async function({ navigateSection, openCommand, getFormState, getC
     assert.equal(submit.default, true, '«Сформировать» — кнопка по умолчанию');
   });
 
+  await step('guard: readSpreadsheet до «Сформировать» → осмысленная ошибка, не ReferenceError', async () => {
+    // Регрессия: чтение несформированного отчёта идёт в ветку allCells.size===0,
+    // которая вызывает checkForErrors(). После рефакторинга на модули символ не был
+    // импортирован в spreadsheet.mjs → падало с "checkForErrors is not defined".
+    // Теперь должно бросать осмысленное сообщение (+ подсказка из инфо-панели 1С).
+    let threw = false, msg = '';
+    try { await readSpreadsheet(); }
+    catch (e) { threw = true; msg = e.message; }
+    log(`readBeforeGenerate: threw=${threw} msg=${msg}`);
+    assert.ok(threw, 'readSpreadsheet должен бросить — отчёт ещё не сформирован');
+    assert.includes(msg, 'no SpreadsheetDocument', 'осмысленное сообщение readSpreadsheet');
+    assert.ok(!/is not defined/.test(msg), 'не ReferenceError — checkForErrors импортирован');
+  });
+
   await step('reset: сброс пользовательских настроек к стандартным', async () => {
     // 1С хранит пользовательские настройки между сессиями — сбрасываем к дефолту,
     // чтобы тест был идемпотентным независимо от предыдущих прогонов.

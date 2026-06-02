@@ -69,6 +69,28 @@ export default async function({ navigateSection, openCommand, clickElement, sele
     await closeForm({ save: false });
   });
 
+  await step('object-search: selectValue({ Наименование }) выбирает через форму выбора', async () => {
+    // Регрессия объектного поиска { field: value }:
+    //   1) dropdown-путь 3A падал на searchText.toLowerCase() (объект, не строка);
+    //   2) pickFromSelectionForm (Шаг 2) вызывал filterList без импорта —
+    //      ReferenceError тихо глотался catch'ем, поиск по полю не отрабатывал.
+    // Теперь объектный search уходит в форму выбора и фильтрует per-field.
+    await navigateSection('Склад');
+    await openCommand('Приходная накладная');
+    await clickElement('Создать');
+
+    const r = await selectValue('Контрагент', { 'Наименование': 'Север' });
+    log(`object-search: method=${r.selected?.method} errors=${JSON.stringify(r.errors)}`);
+    assert.equal(r.selected?.method, 'form', 'объектный поиск идёт через форму выбора');
+    assert.ok(!r.errors, 'без ошибок 1С');
+
+    const field = findField(r, 'Контрагент');
+    log(`Контрагент value='${field?.value}'`);
+    assert.includes(field?.value || '', 'Север', 'выбран контрагент с Наименование=Север');
+
+    await closeForm({ save: false });
+  });
+
   await step('clear: selectValue с пустым search → Shift+F4', async () => {
     await navigateSection('Склад');
     await openCommand('Приходная накладная');
