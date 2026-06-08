@@ -864,7 +864,27 @@ if ($def.elements -and $def.elements.Count -gt 0) {
 	# Detect indent level
 	$childIndent = Get-ChildIndent $targetCI
 
-	# Check for duplicate element names
+	# Check for duplicate element names within the JSON definition itself
+	function Walk-Names($el, [hashtable]$seen) {
+		$typeKey = $null
+		foreach ($key in @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")) {
+			if ($el.$key -ne $null) { $typeKey = $key; break }
+		}
+		if ($typeKey) {
+			$elName = Get-ElementName -el $el -typeKey $typeKey
+			if ($seen.ContainsKey($elName)) {
+				Write-Host "[ERROR] Duplicate element name '$elName' in JSON definition — element names must be unique in 1C form"
+				exit 1
+			}
+			$seen[$elName] = $true
+		}
+		if ($el.children) { foreach ($child in $el.children) { Walk-Names $child $seen } }
+		if ($el.columns) { foreach ($child in $el.columns) { Walk-Names $child $seen } }
+	}
+	$dslNames = @{}
+	foreach ($el in $def.elements) { Walk-Names $el $dslNames }
+
+	# Check for duplicate names against existing form elements
 	foreach ($el in $def.elements) {
 		$typeKey = $null
 		foreach ($key in @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")) {
@@ -874,7 +894,8 @@ if ($def.elements -and $def.elements.Count -gt 0) {
 			$elName = Get-ElementName -el $el -typeKey $typeKey
 			$existing = Find-Element $rootCI $elName
 			if ($existing) {
-				Write-Host "[WARN] Element '$elName' already exists in form (id=$($existing.GetAttribute('id')))"
+				Write-Host "[ERROR] Element '$elName' already exists in form (id=$($existing.GetAttribute('id'))) — element names must be unique"
+				exit 1
 			}
 		}
 	}

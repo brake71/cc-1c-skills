@@ -988,7 +988,29 @@ if elements_list:
     # Detect indent level
     child_indent = get_child_indent(target_ci)
 
-    # Check for duplicate element names
+    # Check for duplicate element names within the JSON definition itself
+    def _walk_names(el, seen):
+        type_key = None
+        for key in ELEMENT_KEYS:
+            if key in el and el[key] is not None:
+                type_key = key
+                break
+        if type_key:
+            el_name = get_element_name(el, type_key)
+            if el_name in seen:
+                print(f"[ERROR] Duplicate element name '{el_name}' in JSON definition — element names must be unique in 1C form")
+                sys.exit(1)
+            seen.add(el_name)
+        for child in el.get('children', []):
+            _walk_names(child, seen)
+        for child in el.get('columns', []):
+            _walk_names(child, seen)
+
+    dsl_names = set()
+    for el in elements_list:
+        _walk_names(el, dsl_names)
+
+    # Check for duplicate names against existing form elements
     for el in elements_list:
         type_key = None
         for key in ELEMENT_KEYS:
@@ -999,7 +1021,8 @@ if elements_list:
             el_name = get_element_name(el, type_key)
             existing = find_element(root_ci, el_name) if root_ci is not None else None
             if existing is not None:
-                print(f"[WARN] Element '{el_name}' already exists in form (id={existing.get('id')})")
+                print(f"[ERROR] Element '{el_name}' already exists in form (id={existing.get('id')}) — element names must be unique")
+                sys.exit(1)
 
     # Remember starting element ID for companion counting
     start_elem_id = next_elem_id

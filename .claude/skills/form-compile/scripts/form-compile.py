@@ -2999,6 +2999,34 @@ def main():
                     return False
         return True
 
+    # --- 1c. Validate unique element names (1C requirement) ---
+    def _collect_names(el, seen):
+        if not isinstance(el, dict):
+            return
+        type_key = None
+        for key in TYPE_KEYS:
+            if el.get(key) is not None:
+                type_key = key
+                break
+        if type_key:
+            el_name = get_element_name(el, type_key)
+            if el_name in seen:
+                print(f"[ERROR] Duplicate element name '{el_name}' — element names must be unique in 1C form", file=sys.stderr)
+                sys.exit(1)
+            seen.add(el_name)
+        for child in el.get('children', []):
+            _collect_names(child, seen)
+        for child in el.get('columns', []):
+            _collect_names(child, seen)
+
+    all_names = set()
+    if isinstance(defn.get('elements'), list):
+        for el in defn['elements']:
+            _collect_names(el, all_names)
+    if main_acb_def and isinstance(main_acb_def.get('children'), list):
+        for el in main_acb_def['children']:
+            _collect_names(el, all_names)
+
     # --- 2. Main compilation ---
     _next_id = 0
     lines = []

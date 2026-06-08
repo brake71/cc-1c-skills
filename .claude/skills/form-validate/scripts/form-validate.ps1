@@ -156,6 +156,7 @@ if (-not $stopped) {
 # --- Collect all elements with IDs ---
 
 $elementIds = @{}  # id -> name (element ID pool)
+$elementNames = @{}  # name -> id (element name uniqueness)
 $allElements = @() # @{Name; Tag; Id; ParentName; Node}
 
 function Collect-Elements {
@@ -184,6 +185,13 @@ function Collect-Elements {
 					Report-Error "Duplicate element id=${id}: '$name' and '$($elementIds[$id])'"
 				} else {
 					$elementIds[$id] = $name
+				}
+
+				# Check duplicate names (1C requirement)
+				if ($elementNames.ContainsKey($name)) {
+					Report-Error "Duplicate element name '$name': id=${id} and id=$($elementNames[$name])"
+				} else {
+					$elementNames[$name] = $id
 				}
 			}
 

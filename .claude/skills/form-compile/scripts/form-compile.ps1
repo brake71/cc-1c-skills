@@ -3174,6 +3174,39 @@ function Compute-MainAcbAutofill {
 	return $true
 }
 
+# --- 11c. Validate unique element names (1C requirement) ---
+$script:typeKeyList = @("columnGroup","group","input","check","radio","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")
+function Validate-UniqueNames {
+	param($elementsList, [hashtable]$seen = @{})
+	foreach ($el in $elementsList) {
+		if ($null -eq $el) { continue }
+		$typeKey = $null
+		foreach ($key in $script:typeKeyList) {
+			if ($null -ne $el.PSObject.Properties[$key] -and $null -ne $el.$key) { $typeKey = $key; break }
+		}
+		if ($typeKey) {
+			$elName = Get-ElementName -el $el -typeKey $typeKey
+			if ($seen.ContainsKey($elName)) {
+				Write-Error "Duplicate element name '$elName' — element names must be unique in 1C form"
+				exit 1
+			}
+			$seen[$elName] = $true
+		}
+		# Recurse into children
+		if ($el.PSObject.Properties["children"] -and $el.children) {
+			Validate-UniqueNames -elementsList $el.children -seen $seen
+		}
+		if ($el.PSObject.Properties["columns"] -and $el.columns) {
+			Validate-UniqueNames -elementsList $el.columns -seen $seen
+		}
+	}
+}
+$allNames = @{}
+if ($def.elements) { Validate-UniqueNames -elementsList $def.elements -seen $allNames }
+if ($script:mainAcbDef -and $script:mainAcbDef.children) {
+	Validate-UniqueNames -elementsList $script:mainAcbDef.children -seen $allNames
+}
+
 # --- 12. Main compilation ---
 
 # Title

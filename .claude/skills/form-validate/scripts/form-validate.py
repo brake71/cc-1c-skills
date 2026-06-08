@@ -183,6 +183,7 @@ def main():
 
     # --- Collect all elements with IDs ---
     element_ids = {}  # id -> name
+    element_names = {}  # name -> id
     all_elements = []  # list of dicts {Name, Tag, Id, ParentName, Node}
 
     def collect_elements(node, parent_name):
@@ -210,6 +211,12 @@ def main():
                         report_error(f"Duplicate element id={eid}: '{name}' and '{element_ids[eid]}'")
                     else:
                         element_ids[eid] = name
+
+                    # Check duplicate names (1C requirement)
+                    if name in element_names:
+                        report_error(f"Duplicate element name '{name}': id={eid} and id={element_names[name]}")
+                    else:
+                        element_names[name] = eid
 
                 child_items = child.find(f"{{{F_NS}}}ChildItems")
                 if child_items is not None:
